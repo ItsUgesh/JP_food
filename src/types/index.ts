@@ -4,7 +4,8 @@ export interface UserProfile {
   id: string;
   name: string;
   email: string;
-  role: Role;
+  role?: Role;
+  lastLoginAt?: any;
 }
 
 export interface MenuItem {
@@ -17,7 +18,7 @@ export interface MenuItem {
 }
 
 export interface OrderItem {
-  id: string;
+  id: string; // Original MenuItem ID
   name: string;
   price: number;
   qty: number;
@@ -31,5 +32,6 @@ export interface Order {
   status: 'pending' | 'paid';
   paymentMethod?: 'cash' | 'esewa';
   createdAt: any;
+  updatedAt?: any;
   paidAt?: any;
 }

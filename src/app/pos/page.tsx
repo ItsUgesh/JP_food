@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -8,18 +8,36 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, Minus, Trash2, ShoppingCart, Search, Loader2 } from 'lucide-react';
-import { MenuItem, OrderItem } from '@/types';
-import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
-import { collection, serverTimestamp, query, orderBy } from 'firebase/firestore';
+import { 
+  Plus, 
+  Minus, 
+  Trash2, 
+  ShoppingCart, 
+  Search, 
+  Loader2, 
+  Save, 
+  Eraser,
+  RefreshCw
+} from 'lucide-react';
+import { MenuItem, OrderItem, Order } from '@/types';
+import { 
+  useFirestore, 
+  useCollection, 
+  useMemoFirebase, 
+  useUser,
+  addDocumentNonBlocking,
+  updateDocumentNonBlocking
+} from '@/firebase';
+import { collection, serverTimestamp, query, orderBy, where, getDocs, doc } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
-import { addDocumentNonBlocking } from '@/firebase';
 
 export default function POSPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [tableNumber, setTableNumber] = useState('');
+  const [isPlacing, setIsPlacing] = useState(false);
+  
   const { toast } = useToast();
   const firestore = useFirestore();
   const { user } = useUser();
@@ -63,7 +81,7 @@ export default function POSPage() {
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
 
-  const placeOrder = () => {
+  const handleConfirmOrder = async () => {
     if (!tableNumber) {
       toast({ title: "Table Required", description: "Please enter a table number.", variant: "destructive" });
       return;
@@ -73,45 +91,90 @@ export default function POSPage() {
       return;
     }
 
-    addDocumentNonBlocking(collection(firestore, 'orders'), {
-      tableNumber,
-      items: cart,
-      total: cartTotal,
-      status: 'pending',
-      createdAt: serverTimestamp(),
-    });
+    setIsPlacing(true);
+    try {
+      // 1. Check for existing pending order for this table
+      const q = query(
+        collection(firestore, 'orders'),
+        where('tableNumber', '==', tableNumber),
+        where('status', '==', 'pending')
+      );
+      const snapshot = await getDocs(q);
+      
+      if (!snapshot.empty) {
+        // 2. Merge items into existing order
+        const existingOrderDoc = snapshot.docs[0];
+        const existingOrder = existingOrderDoc.data() as Order;
+        const existingItems = [...existingOrder.items];
+        
+        cart.forEach(newCartItem => {
+          const index = existingItems.findIndex(ei => ei.id === newCartItem.id);
+          if (index > -1) {
+            existingItems[index].qty += newCartItem.qty;
+          } else {
+            existingItems.push(newCartItem);
+          }
+        });
 
-    setCart([]);
-    setTableNumber('');
-    toast({ title: "Order Placed", description: `Order for Table ${tableNumber} has been created.` });
+        const newTotal = existingItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
+
+        updateDocumentNonBlocking(doc(firestore, 'orders', existingOrderDoc.id), {
+          items: existingItems,
+          total: newTotal,
+          updatedAt: serverTimestamp()
+        });
+
+        toast({ title: "Order Merged", description: `Updated existing pending order for Table ${tableNumber}.` });
+      } else {
+        // 3. Create a brand new order
+        addDocumentNonBlocking(collection(firestore, 'orders'), {
+          tableNumber,
+          items: cart,
+          total: cartTotal,
+          status: 'pending',
+          createdAt: serverTimestamp(),
+          updatedAt: serverTimestamp()
+        });
+        toast({ title: "New Order Created", description: `Order for Table ${tableNumber} placed successfully.` });
+      }
+
+      setCart([]);
+      setTableNumber('');
+    } catch (error) {
+      console.error(error);
+      toast({ title: "Order Failed", description: "Could not process order.", variant: "destructive" });
+    } finally {
+      setIsPlacing(false);
+    }
   };
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navbar />
       <main className="flex-1 container mx-auto p-4 flex flex-col md:flex-row gap-6 overflow-hidden">
+        {/* Left Side: Menu Grid */}
         <div className="flex-1 flex flex-col gap-4 overflow-hidden">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input 
                 placeholder="Search menu items..." 
-                className="pl-9"
+                className="pl-9 h-12 shadow-sm"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
             <Tabs value={activeCategory} onValueChange={setActiveCategory} className="w-full sm:w-auto">
-              <TabsList className="w-full justify-start overflow-x-auto">
-                <TabsTrigger value="All">All</TabsTrigger>
-                <TabsTrigger value="Drinks">Drinks</TabsTrigger>
-                <TabsTrigger value="Snacks">Snacks</TabsTrigger>
-                <TabsTrigger value="Meals">Meals</TabsTrigger>
+              <TabsList className="w-full justify-start h-12 bg-muted/50">
+                <TabsTrigger value="All" className="px-6 font-bold">All</TabsTrigger>
+                <TabsTrigger value="Drinks" className="px-6 font-bold">Drinks</TabsTrigger>
+                <TabsTrigger value="Snacks" className="px-6 font-bold">Snacks</TabsTrigger>
+                <TabsTrigger value="Meals" className="px-6 font-bold">Meals</TabsTrigger>
               </TabsList>
             </Tabs>
           </div>
 
-          <ScrollArea className="flex-1">
+          <ScrollArea className="flex-1 pr-4">
             {isLoading ? (
               <div className="flex items-center justify-center py-20">
                 <Loader2 className="h-10 w-10 animate-spin text-primary opacity-50" />
@@ -124,24 +187,22 @@ export default function POSPage() {
                     className="group cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all border-none shadow-sm overflow-hidden"
                     onClick={() => addToCart(item)}
                   >
-                    <div className="aspect-[4/3] bg-muted relative">
+                    <div className="aspect-[4/3] bg-muted relative overflow-hidden">
                       <img 
                         src={`https://picsum.photos/seed/${item.id}/400/300`} 
                         alt={item.name}
-                        className="object-cover w-full h-full group-hover:scale-105 transition-transform"
+                        className="object-cover w-full h-full group-hover:scale-110 transition-transform duration-300"
                         data-ai-hint="food drink"
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
-                        <Button size="sm" className="w-full font-bold">Add to Order</Button>
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <Plus className="h-10 w-10 text-white" />
                       </div>
                     </div>
                     <CardContent className="p-4 bg-card">
-                      <div className="flex justify-between items-start mb-1">
-                        <h3 className="font-semibold text-lg line-clamp-1">{item.name}</h3>
-                      </div>
+                      <h3 className="font-bold text-md mb-1 truncate">{item.name}</h3>
                       <div className="flex justify-between items-center">
-                        <span className="text-primary font-bold">Rs. {item.price}</span>
-                        <Badge variant="outline" className="text-[10px] uppercase font-bold">{item.category}</Badge>
+                        <span className="text-primary font-black">Rs. {item.price}</span>
+                        <Badge variant="secondary" className="text-[10px] uppercase tracking-tighter">{item.category}</Badge>
                       </div>
                     </CardContent>
                   </Card>
@@ -149,83 +210,114 @@ export default function POSPage() {
               </div>
             )}
             {!isLoading && filteredItems.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-                <p>No items found.</p>
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground opacity-50">
+                <Search className="h-12 w-12 mb-4" />
+                <p className="font-bold">No menu items found.</p>
               </div>
             )}
           </ScrollArea>
         </div>
 
+        {/* Right Side: Cart Panel */}
         <div className="w-full md:w-[400px] flex flex-col gap-4">
-          <Card className="flex-1 flex flex-col shadow-lg border-primary/10">
-            <CardContent className="p-0 flex flex-col h-full">
-              <div className="p-4 border-b flex items-center justify-between bg-primary text-primary-foreground">
-                <div className="flex items-center gap-2">
-                  <ShoppingCart className="h-5 w-5" />
-                  <h2 className="font-bold text-lg">Current Order</h2>
+          <Card className="flex-1 flex flex-col shadow-xl border-none overflow-hidden bg-card">
+            <div className="p-4 border-b flex items-center justify-between bg-primary text-primary-foreground">
+              <div className="flex items-center gap-2">
+                <ShoppingCart className="h-6 w-6" />
+                <h2 className="font-black text-lg tracking-tight">CART</h2>
+              </div>
+              <Badge variant="outline" className="text-white border-white/50">{cart.length} ITEMS</Badge>
+            </div>
+
+            <div className="p-4 bg-secondary/20">
+              <label className="text-[10px] font-black uppercase text-muted-foreground mb-1 block tracking-widest">Assign Table</label>
+              <Input 
+                placeholder="Table No." 
+                value={tableNumber}
+                onChange={(e) => setTableNumber(e.target.value)}
+                className="font-black text-2xl h-14 text-center focus:ring-primary shadow-inner"
+              />
+              <p className="text-[10px] text-muted-foreground mt-1 text-center font-bold">New items will be merged if table has pending order.</p>
+            </div>
+
+            <ScrollArea className="flex-1 p-4">
+              {cart.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full py-16 text-muted-foreground opacity-30">
+                  <ShoppingCart className="h-16 w-16 mb-4" />
+                  <p className="font-black uppercase tracking-widest">Empty Cart</p>
                 </div>
-                <Badge variant="secondary" className="font-bold">{cart.length} items</Badge>
-              </div>
-
-              <div className="p-4 border-b bg-secondary/30">
-                <label className="text-xs font-bold uppercase text-muted-foreground mb-1 block">Table Number</label>
-                <Input 
-                  placeholder="e.g. 12" 
-                  value={tableNumber}
-                  onChange={(e) => setTableNumber(e.target.value)}
-                  className="font-bold text-lg h-12"
-                />
-              </div>
-
-              <ScrollArea className="flex-1 p-4">
-                {cart.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center h-full py-10 text-muted-foreground opacity-50">
-                    <ShoppingCart className="h-12 w-12 mb-2" />
-                    <p>No items in cart</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {cart.map(item => (
-                      <div key={item.id} className="flex items-center gap-3">
-                        <div className="flex-1">
-                          <h4 className="font-semibold text-sm">{item.name}</h4>
-                          <p className="text-xs text-muted-foreground">Rs. {item.price} x {item.qty}</p>
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQty(item.id, -1)}>
-                            <Minus className="h-3 w-3" />
-                          </Button>
-                          <span className="w-6 text-center text-sm font-bold">{item.qty}</span>
-                          <Button size="icon" variant="outline" className="h-7 w-7" onClick={() => updateQty(item.id, 1)}>
-                            <Plus className="h-3 w-3" />
-                          </Button>
-                          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => removeFromCart(item.id)}>
-                            <Trash2 className="h-3 w-3" />
-                          </Button>
-                        </div>
+              ) : (
+                <div className="space-y-4">
+                  {cart.map(item => (
+                    <div key={item.id} className="flex items-center gap-3 p-2 rounded-lg hover:bg-muted/50 group transition-colors">
+                      <div className="flex-1">
+                        <h4 className="font-bold text-sm leading-tight">{item.name}</h4>
+                        <p className="text-xs text-muted-foreground font-medium">Rs. {item.price}</p>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </ScrollArea>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-8 w-8 rounded-full border" 
+                          onClick={() => updateQty(item.id, -1)}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <span className="w-6 text-center text-sm font-black">{item.qty}</span>
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-8 w-8 rounded-full border" 
+                          onClick={() => updateQty(item.id, 1)}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-8 w-8 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" 
+                          onClick={() => removeFromCart(item.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </ScrollArea>
 
-              <div className="p-4 border-t bg-secondary/10 space-y-3">
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-muted-foreground">Subtotal</span>
-                  <span className="font-medium">Rs. {cartTotal}</span>
+            <div className="p-6 border-t bg-secondary/5 space-y-4">
+              <div className="space-y-2">
+                <div className="flex justify-between items-center text-sm font-bold text-muted-foreground">
+                  <span>SUBTOTAL</span>
+                  <span>Rs. {cartTotal}</span>
                 </div>
-                <div className="flex justify-between items-center border-t pt-3">
-                  <span className="text-lg font-bold">Total</span>
-                  <span className="text-2xl font-black text-primary">Rs. {cartTotal}</span>
+                <div className="flex justify-between items-center border-t border-dashed pt-4">
+                  <span className="text-lg font-black">TOTAL</span>
+                  <span className="text-3xl font-black text-primary tracking-tighter">Rs. {cartTotal}</span>
                 </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
                 <Button 
-                  className="w-full h-14 text-lg font-bold mt-2 shadow-lg"
-                  onClick={placeOrder}
+                  variant="outline" 
+                  className="h-14 font-black tracking-widest uppercase text-xs gap-2"
+                  onClick={() => { setCart([]); setTableNumber(''); }}
+                  disabled={isPlacing || (cart.length === 0 && !tableNumber)}
                 >
-                  Confirm Order
+                  <Eraser className="h-4 w-4" /> Clear
+                </Button>
+                <Button 
+                  className="h-14 font-black tracking-widest uppercase text-xs gap-2 shadow-lg shadow-primary/20"
+                  onClick={handleConfirmOrder}
+                  disabled={isPlacing || cart.length === 0}
+                >
+                  {isPlacing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {isPlacing ? "Processing" : "Place Order"}
                 </Button>
               </div>
-            </CardContent>
+            </div>
           </Card>
         </div>
       </main>
