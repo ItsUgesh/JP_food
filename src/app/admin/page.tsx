@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { 
   Table, 
   TableBody, 
@@ -13,14 +14,15 @@ import {
   TableRow 
 } from '@/components/ui/table';
 import { 
-  Settings, 
-  ShoppingBag, 
-  TrendingUp, 
   Users, 
   ShieldAlert, 
   Loader2, 
   ShieldCheck,
-  UserPlus
+  UserPlus,
+  ArrowRight,
+  Settings,
+  ShoppingBag,
+  TrendingUp
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -43,21 +45,18 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const [isBootstrapping, setIsBootstrapping] = useState(false);
 
-  // Check current user's admin status
   const adminRoleRef = useMemoFirebase(() => 
     user ? doc(firestore, 'roles_admin', user.uid) : null,
     [firestore, user]
   );
   const { data: currentAdminRole, isLoading: isCurrentAdminLoading } = useDoc(adminRoleRef);
 
-  // Fetch all users for role management
   const usersQuery = useMemoFirebase(() => 
     query(collection(firestore, 'users')),
     [firestore]
   );
   const { data: allUsers, isLoading: isUsersLoading } = useCollection<UserProfile>(usersQuery);
 
-  // Fetch all admin UIDs to check roles efficiently
   const adminRolesQuery = useMemoFirebase(() => 
     query(collection(firestore, 'roles_admin')),
     [firestore]
@@ -68,25 +67,20 @@ export default function AdminDashboard() {
   const bootstrapAdmin = () => {
     if (!user) return;
     setIsBootstrapping(true);
-    
-    // Existence in roles_admin collection is the source of truth
     setDocumentNonBlocking(doc(firestore, 'roles_admin', user.uid), {
       assignedAt: serverTimestamp()
     }, { merge: true });
-
-    // Update the informational role in the user document
     updateDocumentNonBlocking(doc(firestore, 'users', user.uid), {
       role: 'admin',
       updatedAt: serverTimestamp()
     });
-
     toast({ title: "Role Granted", description: "You now have admin privileges." });
     setTimeout(() => setIsBootstrapping(false), 1000);
   };
 
   const toggleAdminRole = (targetUser: UserProfile, isCurrentlyAdmin: boolean) => {
     if (targetUser.id === user?.uid) {
-      toast({ title: "Action Denied", description: "You cannot remove your own admin role.", variant: "destructive" });
+      toast({ title: "Forbidden", description: "You cannot remove your own admin role.", variant: "destructive" });
       return;
     }
 
@@ -103,13 +97,6 @@ export default function AdminDashboard() {
     }
   };
 
-  const stats = [
-    { title: 'Menu Items', icon: Settings, link: '/admin/menu', color: 'bg-blue-500' },
-    { title: 'Live Orders', icon: ShoppingBag, link: '/orders', color: 'bg-green-500' },
-    { title: 'Sales Reports', icon: TrendingUp, link: '/reports', color: 'bg-amber-500' },
-    { title: 'Staff Control', icon: Users, link: '#users-section', color: 'bg-purple-500' },
-  ];
-
   if (!isCurrentAdminLoading && !currentAdminRole) {
     return (
       <div className="min-h-screen flex flex-col bg-background">
@@ -117,21 +104,18 @@ export default function AdminDashboard() {
         <main className="flex-1 flex items-center justify-center p-4">
           <Card className="max-w-md w-full border-primary/20 bg-primary/5">
             <CardHeader className="text-center">
-              <ShieldAlert className="h-16 w-16 text-primary mx-auto mb-4" />
-              <CardTitle className="text-2xl font-black">Access Restricted</CardTitle>
-              <CardDescription>Only system administrators can access this panel.</CardDescription>
+              <ShieldAlert className="h-12 w-12 text-primary mx-auto mb-4" />
+              <CardTitle className="text-xl font-black">Restricted Access</CardTitle>
+              <CardDescription>Admin credentials required for this dashboard.</CardDescription>
             </CardHeader>
-            <CardContent className="flex flex-col gap-4">
-              <p className="text-sm text-center text-muted-foreground">
-                If you believe you should have access, contact the owner or click below to request admin privileges (development mode).
-              </p>
+            <CardContent>
               <Button 
                 onClick={bootstrapAdmin} 
                 disabled={isBootstrapping}
-                className="font-bold h-12"
+                className="w-full font-bold h-11"
               >
                 {isBootstrapping ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <UserPlus className="h-4 w-4 mr-2" />}
-                Make Me Admin
+                Promote Self to Admin
               </Button>
             </CardContent>
           </Card>
@@ -140,94 +124,96 @@ export default function AdminDashboard() {
     );
   }
 
+  const quickLinks = [
+    { title: 'Menu Items', icon: Settings, link: '/admin/menu', color: 'text-blue-500' },
+    { title: 'Live Orders', icon: ShoppingBag, link: '/orders', color: 'text-green-500' },
+    { title: 'Analytics', icon: TrendingUp, link: '/reports', color: 'text-amber-500' },
+  ];
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navbar />
       <main className="flex-1 container mx-auto p-4 md:p-8 space-y-8">
-        <div>
-          <h1 className="text-3xl font-black text-primary">Admin Control Center</h1>
-          <p className="text-muted-foreground">Oversee roles, inventory, and business performance.</p>
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+          <div>
+            <h1 className="text-3xl font-black text-primary uppercase tracking-tighter">Control Center</h1>
+            <p className="text-muted-foreground text-sm">System configuration and user management.</p>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {stats.map((stat, i) => (
-            <Card key={i} className="border-none shadow-sm group hover:shadow-md transition-all">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <CardTitle className="text-sm font-bold uppercase text-muted-foreground">{stat.title}</CardTitle>
-                <div className={`${stat.color} p-2 rounded-lg text-white`}>
-                  <stat.icon className="h-4 w-4" />
-                </div>
-              </CardHeader>
-              <CardContent>
-                <Link href={stat.link}>
-                  <Button variant="link" className="p-0 h-auto text-xs font-bold text-primary">
-                    Manage {stat.title} →
-                  </Button>
-                </Link>
-              </CardContent>
-            </Card>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {quickLinks.map((item, idx) => (
+            <Link key={idx} href={item.link}>
+              <Card className="hover:border-primary transition-colors cursor-pointer border-none shadow-sm">
+                <CardContent className="p-6 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className={`p-2 rounded-lg bg-secondary ${item.color}`}>
+                      <item.icon className="h-5 w-5" />
+                    </div>
+                    <span className="font-bold text-sm uppercase tracking-wider">{item.title}</span>
+                  </div>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                </CardContent>
+              </Card>
+            </Link>
           ))}
         </div>
 
-        <section id="users-section" className="space-y-4">
+        <section className="space-y-4">
           <div className="flex items-center gap-2">
-            <Users className="h-6 w-6 text-primary" />
-            <h2 className="text-2xl font-black">Staff & Role Management</h2>
+            <Users className="h-5 w-5 text-primary" />
+            <h2 className="text-xl font-black uppercase tracking-tight">Staff Management</h2>
           </div>
           <Card className="border-none shadow-sm">
-            <CardContent className="p-0">
-              <div className="rounded-md border overflow-hidden">
-                <Table>
-                  <TableHeader className="bg-secondary/20">
-                    <TableRow>
-                      <TableHead className="font-bold">Name</TableHead>
-                      <TableHead className="font-bold">Email</TableHead>
-                      <TableHead className="font-bold">Access Level</TableHead>
-                      <TableHead className="text-right font-bold">Actions</TableHead>
+            <Table>
+              <TableHeader className="bg-secondary/20">
+                <TableRow>
+                  <TableHead className="text-[10px] font-black uppercase">Staff Member</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase">Email Address</TableHead>
+                  <TableHead className="text-[10px] font-black uppercase">Current Role</TableHead>
+                  <TableHead className="text-right text-[10px] font-black uppercase">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isUsersLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-10">
+                      <Loader2 className="h-6 w-6 animate-spin mx-auto text-primary opacity-30" />
+                    </TableCell>
+                  </TableRow>
+                ) : allUsers?.map((u) => {
+                  const isUserAdmin = adminUids.has(u.id);
+                  return (
+                    <TableRow key={u.id}>
+                      <TableCell className="font-bold text-sm">{u.name}</TableCell>
+                      <TableCell className="text-muted-foreground text-xs">{u.email}</TableCell>
+                      <TableCell>
+                        {isUserAdmin ? (
+                          <Badge className="bg-emerald-500 hover:bg-emerald-600 gap-1 text-[9px] uppercase font-black">
+                            <ShieldCheck className="h-3 w-3" /> Admin
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="gap-1 text-[9px] uppercase font-black">
+                            Staff
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          className="font-black text-[10px] uppercase tracking-widest h-8"
+                          onClick={() => toggleAdminRole(u, isUserAdmin)}
+                          disabled={u.id === user?.uid}
+                        >
+                          {isUserAdmin ? "Demote" : "Promote"}
+                        </Button>
+                      </TableCell>
                     </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {isUsersLoading ? (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center py-10">
-                          <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary opacity-50" />
-                        </TableCell>
-                      </TableRow>
-                    ) : allUsers?.map((u) => {
-                      const isUserAdmin = adminUids.has(u.id);
-                      return (
-                        <TableRow key={u.id} className="hover:bg-muted/50 transition-colors">
-                          <TableCell className="font-bold">{u.name}</TableCell>
-                          <TableCell className="text-muted-foreground text-xs">{u.email}</TableCell>
-                          <TableCell>
-                            {isUserAdmin ? (
-                              <Badge className="bg-emerald-100 text-emerald-700 hover:bg-emerald-100 border-emerald-200 gap-1">
-                                <ShieldCheck className="h-3 w-3" /> ADMIN
-                              </Badge>
-                            ) : (
-                              <Badge variant="secondary" className="gap-1">
-                                <Users className="h-3 w-3" /> STAFF
-                              </Badge>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button 
-                              variant={isUserAdmin ? "outline" : "default"} 
-                              size="sm"
-                              className="font-bold text-xs h-8"
-                              onClick={() => toggleAdminRole(u, isUserAdmin)}
-                              disabled={u.id === user?.uid}
-                            >
-                              {isUserAdmin ? "Demote to Staff" : "Promote to Admin"}
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      );
-                    })}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </Card>
         </section>
       </main>

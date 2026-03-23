@@ -6,6 +6,7 @@ export interface UserProfile {
   email: string;
   role?: Role;
   lastLoginAt?: any;
+  createdAt?: any;
 }
 
 export interface MenuItem {
