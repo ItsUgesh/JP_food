@@ -1,0 +1,134 @@
+rules_version = '2';
+
+/**
+ * CAFE POS SYSTEM - SECURITY RULES
+ * 
+ * CORE PHILOSOPHY:
+ * This ruleset implements a Role-Based Access Control (RBAC) model using specialized lookup 
+ * collections (/roles_admin and /roles_staff) to determine user permissions. This approach 
+ * ensures high performance and atomic authorization checks without needing to read a 'role' 
+ * field from the user's profile document.
+ * 
+ * DATA STRUCTURE:
+ * - /users/{userId}: User profile information.
+ * - /roles_admin/{userId}: Presence indicates administrative privileges (Menu management).
+ * - /roles_staff/{userId}: Presence indicates staff privileges (Order management).
+ * - /menuItems/{menuItemId}: Global catalog of drinks and food.
+ * - /orders/{orderId}: Transactional data with embedded order items.
+ * 
+ * KEY SECURITY DECISIONS:
+ * 1. Admin Control: Full CRUD over the menu is strictly limited to users in the roles_admin collection.
+ * 2. Staff Operations: Receptionists (Staff) are granted create/read/update access to orders to manage 
+ *    the daily workflow but cannot modify the menu catalog.
+ * 3. Atomic Orders: Order items are embedded directly within Order documents to ensure relational 
+ *    integrity and simplify authorization—if you can access the order, you can access its items.
+ * 4. Verification: All write operations require verified authentication via Firebase Auth.
+ * 
+ * DENORMALIZATION FOR AUTHORIZATION:
+ * Relational integrity is enforced at the document level. User documents must contain an 'id' 
+ * matching their document path to prevent identity spoofing during creation.
+ */
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- GLOBAL HELPER FUNCTIONS ---
+
+    /** @description Checks if the user is authenticated. */
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    /** @description Checks if the user has the 'admin' role via lookup collection. */
+    function isAdmin() {
+      return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
+    }
+
+    /** @description Checks if the user has the 'staff' role via lookup collection. */
+    function isStaff() {
+      return isSignedIn() && exists(/databases/$(database)/documents/roles_staff/$(request.auth.uid));
+    }
+
+    /** @description Checks if the authenticated user's UID matches the provided userId. */
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // The 'isExistingOwner' function was removed because it was unused
+    // and attempted to access the global 'resource' variable directly within a function,
+    // which is not allowed. The logic for checking 'resource != null' is already
+    // handled explicitly in the relevant rules where needed.
+
+    // --- COLLECTION RULES ---
+
+    /**
+     * @description Rules for user profiles. Users manage their own profiles; Admins can view all.
+     * @path /users/{userId}
+     * @allow (create) if authenticated UID matches document path.
+     * @deny (update) if attempting to change the document ID.
+     * @principle Restricts access to a user's own data tree and validates relational integrity.
+     */
+    match /users/{userId} {
+      allow get: if isOwner(userId) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && request.resource.data.id == userId;
+      allow update: if isOwner(userId) && resource != null && request.resource.data.id == resource.data.id;
+      allow delete: if isOwner(userId) && resource != null;
+    }
+
+    /**
+     * @description Admin role lookup collection. Only Admins can manage role assignments.
+     * @path /roles_admin/{userId}
+     * @allow (get) if signed in (to verify own role state).
+     * @deny (write) if user is not an Admin.
+     * @principle Role-based access control managed via lookup collections.
+     */
+    match /roles_admin/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Staff role lookup collection. Only Admins can manage role assignments.
+     * @path /roles_staff/{userId}
+     * @allow (get) if signed in (to verify own role state).
+     * @deny (write) if user is not an Admin.
+     * @principle Role-based access control managed via lookup collections.
+     */
+    match /roles_staff/{userId} {
+      allow get: if isSignedIn();
+      allow list: if isAdmin();
+      allow create, update, delete: if isAdmin();
+    }
+
+    /**
+     * @description Menu catalog items (Drinks/Food). Admins manage; Staff view only.
+     * @path /menuItems/{menuItemId}
+     * @allow (get, list) if any authorized user (Staff/Admin) needs to see the menu.
+     * @deny (create, update, delete) if user is not an Admin.
+     * @principle Admin-only writes for shared reference data.
+     */
+    match /menuItems/{menuItemId} {
+      allow get, list: if isStaff() || isAdmin();
+      allow create: if isAdmin();
+      allow update: if isAdmin() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+
+    /**
+     * @description Customer orders and embedded order items.
+     * @path /orders/{orderId}
+     * @allow (create, update) if user is Staff (Reception).
+     * @allow (get, list) if user is Staff or Admin.
+     * @deny (delete) unless user is Admin.
+     * @principle Permission based on internal staff roles for business operations.
+     */
+    match /orders/{orderId} {
+      allow get, list: if isStaff() || isAdmin();
+      allow create: if isStaff();
+      allow update: if isStaff() && resource != null;
+      allow delete: if isAdmin() && resource != null;
+    }
+  }
+}

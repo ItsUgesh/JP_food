@@ -1,0 +1,250 @@
+{
+  "entities": {
+    "User": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "User",
+      "type": "object",
+      "description": "Represents a user account with specific roles for accessing the POS system.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the User entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The full name of the user."
+        },
+        "email": {
+          "type": "string",
+          "description": "The email address of the user.",
+          "format": "email"
+        },
+        "role": {
+          "type": "string",
+          "description": "The role of the user within the system (e.g., \"admin\", \"staff\")."
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "email",
+        "role"
+      ]
+    },
+    "MenuItem": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "MenuItem",
+      "type": "object",
+      "description": "Represents a single item available on the cafe's menu.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the MenuItem entity."
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the menu item."
+        },
+        "price": {
+          "type": "number",
+          "description": "The price of the menu item."
+        },
+        "category": {
+          "type": "string",
+          "description": "The category the menu item belongs to (e.g., Drinks, Snacks, Meals)."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the menu item was created.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "name",
+        "price",
+        "category",
+        "createdAt"
+      ]
+    },
+    "OrderItem": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "OrderItem",
+      "type": "object",
+      "description": "Represents a single item within an order, capturing its state (name, price, quantity) at the time of ordering.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the OrderItem entity."
+        },
+        "orderId": {
+          "type": "string",
+          "description": "Reference to the parent Order. (Relationship: Order 1:N OrderItem)"
+        },
+        "name": {
+          "type": "string",
+          "description": "The name of the item at the time it was added to the order."
+        },
+        "price": {
+          "type": "number",
+          "description": "The price of the item at the time it was added to the order."
+        },
+        "quantity": {
+          "type": "number",
+          "description": "The quantity of this item included in the order."
+        }
+      },
+      "required": [
+        "id",
+        "orderId",
+        "name",
+        "price",
+        "quantity"
+      ]
+    },
+    "Order": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "Order",
+      "type": "object",
+      "description": "Represents a customer order placed in the cafe, linking to its individual order items.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Unique identifier for the Order entity."
+        },
+        "tableNumber": {
+          "type": "string",
+          "description": "The table number associated with the order."
+        },
+        "orderItemIds": {
+          "type": "array",
+          "description": "References to OrderItem entities that belong to this order. (Relationship: Order 1:N OrderItem)",
+          "items": {
+            "type": "string"
+          }
+        },
+        "total": {
+          "type": "number",
+          "description": "The total calculated price of all items in the order."
+        },
+        "status": {
+          "type": "string",
+          "description": "The current status of the order (e.g., \"pending\", \"paid\")."
+        },
+        "createdAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the order was created.",
+          "format": "date-time"
+        },
+        "paymentMethod": {
+          "type": "string",
+          "description": "The method used for payment (e.g., \"cash\", \"eSewa\"). This field is populated only if the order status is 'paid'."
+        },
+        "paidAt": {
+          "type": "string",
+          "description": "Timestamp indicating when the order was marked as paid. This field is populated only if the order status is 'paid'.",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "id",
+        "tableNumber",
+        "orderItemIds",
+        "total",
+        "status",
+        "createdAt"
+      ]
+    }
+  },
+  "auth": {
+    "providers": [
+      "password",
+      "anonymous"
+    ]
+  },
+  "firestore": {
+    "structure": [
+      {
+        "path": "/users/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "Stores individual user profiles. The 'role' field within this document is informational; authoritative role assignments for security rules are managed in dedicated '/roles_admin/{userId}' and '/roles_staff/{userId}' collections.",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of the user, matching 'request.auth.uid'."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/roles_admin/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "A lookup collection where the existence of a document signifies that the 'userId' possesses 'admin' privileges. This collection enables efficient and atomic security rule checks using '.exists()' for Database Access Control (DBAC).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of a user who has been assigned the 'admin' role."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/roles_staff/{userId}",
+        "definition": {
+          "entityName": "User",
+          "schema": {
+            "$ref": "#/backend/entities/User"
+          },
+          "description": "A lookup collection where the existence of a document signifies that the 'userId' possesses 'staff' privileges. This collection enables efficient and atomic security rule checks using '.exists()' for Database Access Control (DBAC).",
+          "params": [
+            {
+              "name": "userId",
+              "description": "The unique identifier of a user who has been assigned the 'staff' role."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/menuItems/{menuItemId}",
+        "definition": {
+          "entityName": "MenuItem",
+          "schema": {
+            "$ref": "#/backend/entities/MenuItem"
+          },
+          "description": "Stores all available menu items (drinks, food). Full CRUD access is restricted to 'admin' users, while 'staff' users have read-only access to display items on the POS screen. This structure supports secure 'list' operations for both roles.",
+          "params": [
+            {
+              "name": "menuItemId",
+              "description": "The unique identifier for a specific menu item."
+            }
+          ]
+        }
+      },
+      {
+        "path": "/orders/{orderId}",
+        "definition": {
+          "entityName": "Order",
+          "schema": {
+            "$ref": "#/backend/entities/Order"
+          },
+          "description": "Stores customer orders. Each order document embeds its `items` (OrderItem data) directly to ensure atomicity and Authorization Independence. 'Staff' can create, read, and update 'pending' orders, and mark them 'paid'. 'Admin' users have full read access for reporting purposes. Includes denormalized 'status', 'paymentMethod', and 'paidAt' fields for explicit state modeling.",
+          "params": [
+            {
+              "name": "orderId",
+              "description": "The unique identifier for a specific customer order."
+            }
+          ]
+        }
+      }
+    ],
+    "reasoning": "The Firestore structure is designed to be secure, scalable, and debuggable, adhering strictly to the core design principles and mandates. \n\n**Authorization Independence via Denormalization:**\n1.  **Roles:** User roles ('admin', 'staff') are handled using dedicated top-level collections: `/roles_admin/{userId}` and `/roles_staff/{userId}`. An entry exists in these collections only if the corresponding user possesses that role. This allows Firebase Security Rules to perform highly efficient and atomic `get(path).exists()` checks, completely eliminating complex lookups within user documents or hierarchical dependencies for authorization. For example, to check if a user is an admin, the rule simply checks `get(/roles_admin/$(request.auth.uid)).exists()`. This is far more robust than trying to read a 'role' field from the user's profile document within a rule, especially for cross-collection access. The `role` field in the `/users/{userId}` document becomes informational and is not directly used for security rule enforcement.\n2.  **Order Items:** The user's specific instruction to include `items: [{name, price, qty}]` directly within the `Order` document means that `OrderItem` entities are embedded. This is a crucial denormalization strategy that ensures the security and integrity of an order and its items are managed as a single, atomic unit. All data relevant to an `OrderItem`'s security (e.g., can it be edited? Is the parent order pending?) is inherently within the `Order` document. This completely eliminates the need for `get()` calls to a parent `Order` document when authorizing operations on individual order items, thus achieving strong Authorization Independence for order item data.\n\n**Structural Segregation (Homogeneous Security Posture):**\n1.  **`menuItems` Collection:** This collection (`/menuItems/{menuItemId}`) holds all menu items. All documents within it share the same security requirements: readable by staff and admins, and writable/deletable only by admins. This segregation simplifies rules significantly, as no document within the collection requires special, different access logic.\n2.  **`orders` Collection:** All orders (`/orders/{orderId}`) share the same general access pattern: manageable by staff, viewable by admins. The `status` field (`pending` or `paid`) is an *attribute* of the document, not a segregating factor for different collections, allowing a single set of rules to govern the entire collection while internal logic handles state transitions. This also supports `list` operations without security rule filtering.\n3.  **Role Collections:** `/roles_admin/{userId}` and `/roles_staff/{userId}` collections are explicitly segregated to enforce roles. Each document in these collections simply signifies the presence of a role for a given user ID, making security checks uniform across the collection.\n\n**QAPs (Rules are not Filters):**\n*   **`menuItems`:** Staff and admins can `list` all `menuItems` without needing to filter by ownership or specific attributes, as all items are meant to be displayed in the POS system. Rules simply check for the authenticated user's staff or admin role using the dedicated role collections.\n*   **`orders`:** Staff and admins need to view all `pending` and `paid` orders. The rules for the `/orders` collection grant read access to both staff and admins. The application layer then filters and displays orders based on their `status` field. This ensures that the security rules allow broad, authorized `list` operations, and client-side logic handles specific data presentation, adhering to the QAP principle.\n*   **`users`:** For retrieving user profiles, authenticated users can read their own profile. Admins may be able to read all user profiles (depending on a specific rule), but the core `roles_` collections ensure that the *authorization logic* itself doesn't become a filter for `list` operations on those critical role collections."
+  }
+}
