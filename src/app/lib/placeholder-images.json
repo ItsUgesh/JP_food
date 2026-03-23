@@ -1,0 +1,23 @@
+
+{
+  "placeholderImages": [
+    {
+      "id": "drinks",
+      "description": "Hot and cold beverages",
+      "imageUrl": "https://picsum.photos/seed/cafe-drinks/400/300",
+      "imageHint": "coffee drinks"
+    },
+    {
+      "id": "snacks",
+      "description": "Light snacks and appetizers",
+      "imageUrl": "https://picsum.photos/seed/cafe-snacks/400/300",
+      "imageHint": "snacks appetizers"
+    },
+    {
+      "id": "meals",
+      "description": "Main courses and full meals",
+      "imageUrl": "https://picsum.photos/seed/cafe-meals/400/300",
+      "imageHint": "food meal"
+    }
+  ]
+}
