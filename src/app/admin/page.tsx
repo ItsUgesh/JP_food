@@ -27,6 +27,7 @@ import {
   Activity
 } from 'lucide-react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { 
   useUser, 
   useFirestore, 
@@ -45,8 +46,9 @@ import { UserProfile, Order } from '@/types';
 import { formatNepalDateID, startOfNepalDay, endOfNepalDay } from '@/lib/date-utils';
 
 export default function AdminDashboard() {
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
+  const router = useRouter();
   const { toast } = useToast();
   const [stats, setStats] = useState({ revenue: 0, orders: 0, cash: 0, esewa: 0 });
 
@@ -58,11 +60,18 @@ export default function AdminDashboard() {
   const adminUids = new Set(adminRolesList?.map(r => r.id) || []);
 
   const myAdminRoleRef = useMemoFirebase(() => user ? doc(firestore, 'roles_admin', user.uid) : null, [firestore, user]);
-  const { data: myAdminRole } = useDoc(myAdminRoleRef);
+  const { data: myAdminRole, isLoading: isAdminLoading } = useDoc(myAdminRoleRef);
+
+  // Protection: Redirect non-admins away from this page
+  useEffect(() => {
+    if (!isUserLoading && !isAdminLoading && user && !myAdminRole) {
+      router.push('/pos');
+    }
+  }, [user, isUserLoading, isAdminLoading, myAdminRole, router]);
 
   useEffect(() => {
     const fetchTodayStats = async () => {
-      if (!user) return;
+      if (!user || !myAdminRole) return;
       
       const todayId = formatNepalDateID();
       const start = startOfNepalDay();
@@ -96,16 +105,12 @@ export default function AdminDashboard() {
           }, { merge: true });
         })
         .catch((err) => {
-          const permissionError = new FirestorePermissionError({
-            path: 'orders',
-            operation: 'list'
-          });
-          errorEmitter.emit('permission-error', permissionError);
+          console.error("Stats fetch error:", err);
         });
     };
     
     fetchTodayStats();
-  }, [firestore, user]);
+  }, [firestore, user, myAdminRole]);
 
   const toggleAdminRole = (targetUser: UserProfile, isCurrentlyAdmin: boolean) => {
     if (isCurrentlyAdmin) {
@@ -133,6 +138,28 @@ export default function AdminDashboard() {
     toast({ title: "Success", description: "You are now an Admin." });
   };
 
+  if (isUserLoading || isAdminLoading) {
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
+  }
+
+  if (!myAdminRole) {
+    return (
+      <div className="min-h-screen flex flex-col bg-background">
+        <Navbar />
+        <main className="flex-1 flex flex-col items-center justify-center p-4 space-y-6 text-center">
+          <div className="bg-amber-100 p-6 rounded-2xl max-w-md">
+            <ShieldCheck className="h-16 w-16 text-amber-600 mx-auto mb-4" />
+            <h2 className="text-2xl font-black text-amber-800 uppercase">Access Denied</h2>
+            <p className="text-amber-700 mt-2 font-medium">You need Admin privileges to access the management dashboard.</p>
+            <Button onClick={bootstrapMe} className="mt-6 w-full font-black uppercase">
+              Bootstrap Admin Access
+            </Button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col bg-background">
       <Navbar />
@@ -148,11 +175,6 @@ export default function AdminDashboard() {
                 <TrendingUp className="h-4 w-4" /> View Insights
               </Button>
             </Link>
-            {!myAdminRole && (
-              <Button onClick={bootstrapMe} variant="outline" className="gap-2 border-primary text-primary font-black uppercase text-xs h-10">
-                <Zap className="h-4 w-4 fill-primary" /> Bootstrap Admin
-              </Button>
-            )}
           </div>
         </div>
 

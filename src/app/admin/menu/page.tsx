@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/dialog';
 import { Plus, Edit2, Trash2, Search, Loader2 } from 'lucide-react';
 import { MenuItem } from '@/types';
-import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
 import { 
   collection, 
   query, 
@@ -31,6 +31,7 @@ import {
 } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
+import { useRouter } from 'next/navigation';
 
 export default function MenuAdminPage() {
   const [search, setSearch] = useState('');
@@ -39,12 +40,23 @@ export default function MenuAdminPage() {
   const [formData, setFormData] = useState({ name: '', price: '', category: 'Drinks' });
   const { toast } = useToast();
   const firestore = useFirestore();
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
+  const router = useRouter();
+
+  const myAdminRoleRef = useMemoFirebase(() => user ? doc(firestore, 'roles_admin', user.uid) : null, [firestore, user]);
+  const { data: myAdminRole, isLoading: isAdminLoading } = useDoc(myAdminRoleRef);
+
+  // Protection: Redirect non-admins away from this page
+  useEffect(() => {
+    if (!isUserLoading && !isAdminLoading && user && !myAdminRole) {
+      router.push('/pos');
+    }
+  }, [user, isUserLoading, isAdminLoading, myAdminRole, router]);
 
   const menuQuery = useMemoFirebase(() => {
-    if (!user) return null;
+    if (!user || !myAdminRole) return null;
     return query(collection(firestore, 'menu_items'), orderBy('name', 'asc'));
-  }, [firestore, user]);
+  }, [firestore, user, myAdminRole]);
 
   const { data: items, isLoading } = useCollection<MenuItem>(menuQuery);
 
@@ -85,6 +97,12 @@ export default function MenuAdminPage() {
     i.name.toLowerCase().includes(search.toLowerCase()) || 
     i.category.toLowerCase().includes(search.toLowerCase())
   );
+
+  if (isUserLoading || isAdminLoading) {
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
+  }
+
+  if (!myAdminRole) return null;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">

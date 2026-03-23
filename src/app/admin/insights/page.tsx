@@ -1,28 +1,39 @@
 "use client"
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { 
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  BarChart, Bar, Legend, PieChart, Pie, Cell
+  PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, orderBy, limit } from 'firebase/firestore';
+import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
+import { collection, query, orderBy, limit, doc } from 'firebase/firestore';
 import { DailyReport } from '@/types';
 import { Loader2, TrendingUp, TrendingDown, Target, Zap, Activity } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
 
 export default function InsightsPage() {
   const firestore = useFirestore();
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
+  const router = useRouter();
+
+  const myAdminRoleRef = useMemoFirebase(() => user ? doc(firestore, 'roles_admin', user.uid) : null, [firestore, user]);
+  const { data: myAdminRole, isLoading: isAdminLoading } = useDoc(myAdminRoleRef);
+
+  // Protection: Redirect non-admins away from this page
+  useEffect(() => {
+    if (!isUserLoading && !isAdminLoading && user && !myAdminRole) {
+      router.push('/pos');
+    }
+  }, [user, isUserLoading, isAdminLoading, myAdminRole, router]);
 
   const reportsQuery = useMemoFirebase(() => {
-    if (!user) return null;
+    if (!user || !myAdminRole) return null;
     return query(collection(firestore, 'daily_reports'), orderBy('date', 'desc'), limit(30));
-  }, [firestore, user]);
+  }, [firestore, user, myAdminRole]);
 
   const { data: reports, isLoading } = useCollection<DailyReport>(reportsQuery);
 
@@ -49,6 +60,14 @@ export default function InsightsPage() {
   };
 
   const kpi = calculateKPI();
+
+  if (isUserLoading || isAdminLoading) {
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
+  }
+
+  if (!myAdminRole) {
+    return null; // Effect will handle redirect
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -128,7 +147,7 @@ export default function InsightsPage() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  {reports.slice(0, 4).map((report) => (
+                  {(reports || []).slice(0, 4).map((report) => (
                     <div key={report.id} className="p-4 rounded-xl bg-secondary/50 border border-primary/5 space-y-2">
                       <div className="text-[10px] font-black uppercase text-muted-foreground">{report.date}</div>
                       <div className="text-xl font-black text-primary">Rs. {report.totalRevenue}</div>

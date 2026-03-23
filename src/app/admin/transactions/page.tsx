@@ -1,28 +1,39 @@
-
 "use client"
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
-import { collection, query, orderBy, where, limit } from 'firebase/firestore';
+import { useFirestore, useCollection, useMemoFirebase, useUser, useDoc } from '@/firebase';
+import { collection, query, orderBy, where, limit, doc } from 'firebase/firestore';
 import { Order } from '@/types';
 import { format } from 'date-fns';
 import { Search, Wallet, IndianRupee, Clock, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useRouter } from 'next/navigation';
 
 export default function TransactionsPage() {
   const [filter, setFilter] = useState<'all' | 'cash' | 'esewa'>('all');
   const [search, setSearch] = useState('');
   const firestore = useFirestore();
-  const { user } = useUser();
+  const { user, isUserLoading } = useUser();
+  const router = useRouter();
+
+  const myAdminRoleRef = useMemoFirebase(() => user ? doc(firestore, 'roles_admin', user.uid) : null, [firestore, user]);
+  const { data: myAdminRole, isLoading: isAdminLoading } = useDoc(myAdminRoleRef);
+
+  // Protection: Redirect non-admins away from this page
+  useEffect(() => {
+    if (!isUserLoading && !isAdminLoading && user && !myAdminRole) {
+      router.push('/pos');
+    }
+  }, [user, isUserLoading, isAdminLoading, myAdminRole, router]);
 
   const transactionsQuery = useMemoFirebase(() => {
-    if (!user) return null;
+    if (!user || !myAdminRole) return null;
     let baseQuery = query(
       collection(firestore, 'orders'),
       where('status', '==', 'paid'),
@@ -30,7 +41,7 @@ export default function TransactionsPage() {
       limit(100)
     );
     return baseQuery;
-  }, [firestore, user]);
+  }, [firestore, user, myAdminRole]);
 
   const { data: orders, isLoading } = useCollection<Order>(transactionsQuery);
 
@@ -39,6 +50,12 @@ export default function TransactionsPage() {
     const matchesSearch = order.tableNumber.includes(search) || order.id.toLowerCase().includes(search.toLowerCase());
     return matchesFilter && matchesSearch;
   });
+
+  if (isUserLoading || isAdminLoading) {
+    return <div className="min-h-screen flex items-center justify-center"><Loader2 className="animate-spin h-10 w-10 text-primary" /></div>;
+  }
+
+  if (!myAdminRole) return null;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
