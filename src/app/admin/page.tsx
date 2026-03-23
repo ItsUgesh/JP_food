@@ -105,7 +105,11 @@ export default function AdminDashboard() {
           }, { merge: true });
         })
         .catch((err) => {
-          console.error("Stats fetch error:", err);
+          const permissionError = new FirestorePermissionError({
+            path: 'orders',
+            operation: 'list'
+          });
+          errorEmitter.emit('permission-error', permissionError);
         });
     };
     
