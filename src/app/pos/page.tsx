@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -82,7 +82,7 @@ export default function POSPage() {
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
 
   const handleConfirmOrder = async () => {
-    if (!tableNumber) {
+    if (!tableNumber.trim()) {
       toast({ title: "Table Required", description: "Please enter a table number.", variant: "destructive" });
       return;
     }
@@ -93,56 +93,56 @@ export default function POSPage() {
 
     setIsPlacing(true);
     try {
-      // 1. Check for existing pending order for this table
+      // Find existing pending order for this table
       const q = query(
         collection(firestore, 'orders'),
-        where('tableNumber', '==', tableNumber),
+        where('tableNumber', '==', tableNumber.trim()),
         where('status', '==', 'pending')
       );
       const snapshot = await getDocs(q);
       
       if (!snapshot.empty) {
-        // 2. Merge items into existing order
+        // Merge items into existing order
         const existingOrderDoc = snapshot.docs[0];
         const existingOrder = existingOrderDoc.data() as Order;
-        const existingItems = [...existingOrder.items];
+        const mergedItems = [...existingOrder.items];
         
         cart.forEach(newCartItem => {
-          const index = existingItems.findIndex(ei => ei.id === newCartItem.id);
+          const index = mergedItems.findIndex(ei => ei.id === newCartItem.id);
           if (index > -1) {
-            existingItems[index].qty += newCartItem.qty;
+            mergedItems[index].qty += newCartItem.qty;
           } else {
-            existingItems.push(newCartItem);
+            mergedItems.push(newCartItem);
           }
         });
 
-        const newTotal = existingItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
+        const newTotal = mergedItems.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
         updateDocumentNonBlocking(doc(firestore, 'orders', existingOrderDoc.id), {
-          items: existingItems,
+          items: mergedItems,
           total: newTotal,
           updatedAt: serverTimestamp()
         });
 
-        toast({ title: "Order Merged", description: `Updated existing pending order for Table ${tableNumber}.` });
+        toast({ title: "Order Updated", description: `Added items to pending order for Table ${tableNumber}.` });
       } else {
-        // 3. Create a brand new order
+        // Create a new order
         addDocumentNonBlocking(collection(firestore, 'orders'), {
-          tableNumber,
+          tableNumber: tableNumber.trim(),
           items: cart,
           total: cartTotal,
           status: 'pending',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
-        toast({ title: "New Order Created", description: `Order for Table ${tableNumber} placed successfully.` });
+        toast({ title: "Order Placed", description: `New order for Table ${tableNumber} created.` });
       }
 
       setCart([]);
       setTableNumber('');
     } catch (error) {
       console.error(error);
-      toast({ title: "Order Failed", description: "Could not process order.", variant: "destructive" });
+      toast({ title: "Operation Failed", description: "Could not process order.", variant: "destructive" });
     } finally {
       setIsPlacing(false);
     }
@@ -209,12 +209,6 @@ export default function POSPage() {
                 ))}
               </div>
             )}
-            {!isLoading && filteredItems.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground opacity-50">
-                <Search className="h-12 w-12 mb-4" />
-                <p className="font-bold">No menu items found.</p>
-              </div>
-            )}
           </ScrollArea>
         </div>
 
@@ -224,27 +218,26 @@ export default function POSPage() {
             <div className="p-4 border-b flex items-center justify-between bg-primary text-primary-foreground">
               <div className="flex items-center gap-2">
                 <ShoppingCart className="h-6 w-6" />
-                <h2 className="font-black text-lg tracking-tight">CART</h2>
+                <h2 className="font-black text-lg tracking-tight">SHOPPING CART</h2>
               </div>
               <Badge variant="outline" className="text-white border-white/50">{cart.length} ITEMS</Badge>
             </div>
 
             <div className="p-4 bg-secondary/20">
-              <label className="text-[10px] font-black uppercase text-muted-foreground mb-1 block tracking-widest">Assign Table</label>
+              <label className="text-[10px] font-black uppercase text-muted-foreground mb-1 block tracking-widest">Table Number</label>
               <Input 
-                placeholder="Table No." 
+                placeholder="e.g. 5" 
                 value={tableNumber}
                 onChange={(e) => setTableNumber(e.target.value)}
                 className="font-black text-2xl h-14 text-center focus:ring-primary shadow-inner"
               />
-              <p className="text-[10px] text-muted-foreground mt-1 text-center font-bold">New items will be merged if table has pending order.</p>
             </div>
 
             <ScrollArea className="flex-1 p-4">
               {cart.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-full py-16 text-muted-foreground opacity-30">
                   <ShoppingCart className="h-16 w-16 mb-4" />
-                  <p className="font-black uppercase tracking-widest">Empty Cart</p>
+                  <p className="font-black uppercase tracking-widest text-xs">Your cart is empty</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -288,15 +281,9 @@ export default function POSPage() {
             </ScrollArea>
 
             <div className="p-6 border-t bg-secondary/5 space-y-4">
-              <div className="space-y-2">
-                <div className="flex justify-between items-center text-sm font-bold text-muted-foreground">
-                  <span>SUBTOTAL</span>
-                  <span>Rs. {cartTotal}</span>
-                </div>
-                <div className="flex justify-between items-center border-t border-dashed pt-4">
-                  <span className="text-lg font-black">TOTAL</span>
-                  <span className="text-3xl font-black text-primary tracking-tighter">Rs. {cartTotal}</span>
-                </div>
+              <div className="flex justify-between items-center border-t border-dashed pt-4">
+                <span className="text-lg font-black uppercase text-muted-foreground">Total</span>
+                <span className="text-3xl font-black text-primary tracking-tighter">Rs. {cartTotal}</span>
               </div>
               
               <div className="grid grid-cols-2 gap-3">
@@ -306,7 +293,7 @@ export default function POSPage() {
                   onClick={() => { setCart([]); setTableNumber(''); }}
                   disabled={isPlacing || (cart.length === 0 && !tableNumber)}
                 >
-                  <Eraser className="h-4 w-4" /> Clear
+                  <Eraser className="h-4 w-4" /> Reset
                 </Button>
                 <Button 
                   className="h-14 font-black tracking-widest uppercase text-xs gap-2 shadow-lg shadow-primary/20"

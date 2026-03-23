@@ -11,7 +11,8 @@ import {
   LogOut,
   Moon,
   Sun,
-  LayoutDashboard
+  LayoutDashboard,
+  ShieldCheck
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -28,13 +29,11 @@ export function Navbar() {
   const { user } = useUser();
   const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // Memoize document reference to prevent infinite loops in Navbar
+  // Check current user's admin status
   const adminRoleRef = useMemoFirebase(() => 
     user ? doc(firestore, 'roles_admin', user.uid) : null,
     [firestore, user]
   );
-
-  // Check if user is admin for conditional rendering
   const { data: adminRole } = useDoc(adminRoleRef);
 
   useEffect(() => {
@@ -71,10 +70,10 @@ export function Navbar() {
   });
 
   return (
-    <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 shadow-sm">
+    <nav className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur shadow-sm">
       <div className="container mx-auto flex h-16 items-center justify-between px-4">
         <Link href="/" className="flex items-center gap-2">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-md shadow-primary/20">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg">
             <Utensils className="h-6 w-6" />
           </div>
           <span className="text-xl font-black tracking-tighter text-primary font-headline hidden sm:block">
@@ -103,6 +102,11 @@ export function Navbar() {
           <div className="h-6 w-px bg-border hidden md:block" />
 
           <div className="flex items-center gap-2">
+            {adminRole && (
+              <div className="hidden sm:flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-200">
+                <ShieldCheck className="h-3 w-3" /> Admin
+              </div>
+            )}
             <Button variant="ghost" size="icon" onClick={toggleDarkMode} className="rounded-full">
               {isDarkMode ? <Sun className="h-5 w-5 text-yellow-500" /> : <Moon className="h-5 w-5 text-blue-500" />}
             </Button>
@@ -120,8 +124,8 @@ export function Navbar() {
         </div>
       </div>
       
-      {/* Mobile Nav */}
-      <div className="flex md:hidden items-center justify-around border-t py-2 bg-background/50 backdrop-blur-lg">
+      {/* Mobile Bottom Nav */}
+      <div className="flex md:hidden items-center justify-around border-t py-2 bg-background/80 backdrop-blur-md">
         {filteredNavItems.map((item) => (
           <Link key={item.href} href={item.href} className="flex flex-col items-center gap-1 px-3 py-1">
             <item.icon className={cn(

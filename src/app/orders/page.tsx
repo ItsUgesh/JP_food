@@ -62,7 +62,6 @@ export default function OrdersPage() {
 
   const { data: orders, isLoading } = useCollection<Order>(ordersQuery);
 
-  // Payment Logic
   const handleMarkAsPaid = (order: Order) => {
     setSelectedOrder(order);
     setIsPaymentDialogOpen(true);
@@ -78,10 +77,9 @@ export default function OrdersPage() {
     });
     setIsPaymentDialogOpen(false);
     setSelectedOrder(null);
-    toast({ title: "Payment Recorded", description: "Order has been settled successfully." });
+    toast({ title: "Order Settled", description: "Payment has been recorded successfully." });
   };
 
-  // Edit Logic
   const handleEditOrder = (order: Order) => {
     setSelectedOrder(order);
     setEditingItems([...order.items]);
@@ -112,7 +110,7 @@ export default function OrdersPage() {
     });
     
     setIsEditDialogOpen(false);
-    toast({ title: "Order Updated", description: "The order items have been revised." });
+    toast({ title: "Order Updated", description: "Modifications saved." });
   };
 
   const handlePrint = (order: Order) => {
@@ -130,8 +128,8 @@ export default function OrdersPage() {
       <Navbar />
       <main className="flex-1 container mx-auto p-4 md:p-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-black text-primary">Order Management</h1>
-          <p className="text-muted-foreground">Track lifecycle from pending to paid and printing.</p>
+          <h1 className="text-3xl font-black text-primary">Order Tracking</h1>
+          <p className="text-muted-foreground">Monitor and settle customer transactions.</p>
         </div>
 
         {isLoading ? (
@@ -140,7 +138,7 @@ export default function OrdersPage() {
           </div>
         ) : (
           <Tabs defaultValue="pending" className="space-y-6">
-            <TabsList className="bg-muted p-1 h-12 shadow-inner">
+            <TabsList className="bg-muted p-1 h-12">
               <TabsTrigger value="pending" className="gap-2 px-8 font-bold data-[state=active]:bg-primary data-[state=active]:text-white">
                 Pending
                 <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200">
@@ -165,8 +163,8 @@ export default function OrdersPage() {
                 />
               ))}
               {pendingOrders.length === 0 && (
-                <div className="col-span-full text-center py-24 bg-muted/30 rounded-2xl border-2 border-dashed border-muted-foreground/20">
-                  <p className="text-muted-foreground font-bold italic">No active pending orders.</p>
+                <div className="col-span-full text-center py-24 bg-muted/20 rounded-2xl border-2 border-dashed">
+                  <p className="text-muted-foreground font-bold italic">No active orders found.</p>
                 </div>
               )}
             </TabsContent>
@@ -180,8 +178,8 @@ export default function OrdersPage() {
                 />
               ))}
               {paidOrders.length === 0 && (
-                <div className="col-span-full text-center py-24 bg-muted/30 rounded-2xl border-2 border-dashed border-muted-foreground/20">
-                  <p className="text-muted-foreground font-bold italic">History is currently empty.</p>
+                <div className="col-span-full text-center py-24 bg-muted/20 rounded-2xl border-2 border-dashed">
+                  <p className="text-muted-foreground font-bold italic">No settled orders in history.</p>
                 </div>
               )}
             </TabsContent>
@@ -189,61 +187,46 @@ export default function OrdersPage() {
         )}
       </main>
 
-      {/* Payment Dialog */}
+      {/* Payment Settlement Dialog */}
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-2xl font-black">
-              <Wallet className="h-6 w-6 text-primary" />
               Settle Payment
             </DialogTitle>
-            <DialogDescription>Select payment method for Table {selectedOrder?.tableNumber}.</DialogDescription>
+            <DialogDescription>Finalizing bill for Table {selectedOrder?.tableNumber}.</DialogDescription>
           </DialogHeader>
           <div className="py-6 space-y-6">
             <div className="flex justify-between items-center p-6 bg-secondary/30 rounded-xl border border-primary/10">
-              <span className="font-bold text-muted-foreground">TOTAL PAYABLE</span>
-              <span className="text-4xl font-black text-primary tracking-tighter">Rs. {selectedOrder?.total}</span>
+              <span className="font-bold text-muted-foreground">TOTAL BILL</span>
+              <span className="text-4xl font-black text-primary">Rs. {selectedOrder?.total}</span>
             </div>
             <div className="space-y-3">
-              <Label className="font-black text-[10px] uppercase tracking-widest text-muted-foreground">Payment Source</Label>
+              <Label className="font-black text-[10px] uppercase text-muted-foreground">Payment Method</Label>
               <RadioGroup value={paymentMethod} onValueChange={(v: any) => setPaymentMethod(v)} className="grid grid-cols-2 gap-4">
-                <div>
-                  <RadioGroupItem value="cash" id="cash" className="peer sr-only" />
-                  <Label
-                    htmlFor="cash"
-                    className="flex flex-col items-center justify-between rounded-xl border-2 border-muted bg-popover p-6 hover:bg-accent/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer transition-all"
-                  >
-                    <span className="text-lg font-black uppercase tracking-tight">Cash</span>
-                  </Label>
+                <div className="flex items-center space-x-2 border p-4 rounded-xl cursor-pointer hover:bg-muted/50 transition-colors has-[:checked]:border-primary">
+                  <RadioGroupItem value="cash" id="cash-opt" />
+                  <Label htmlFor="cash-opt" className="flex-1 cursor-pointer font-bold">CASH</Label>
                 </div>
-                <div>
-                  <RadioGroupItem value="esewa" id="esewa" className="peer sr-only" />
-                  <Label
-                    htmlFor="esewa"
-                    className="flex flex-col items-center justify-between rounded-xl border-2 border-muted bg-popover p-6 hover:bg-emerald-50 peer-data-[state=checked]:border-emerald-500 peer-data-[state=checked]:bg-emerald-50 cursor-pointer transition-all"
-                  >
-                    <span className="text-lg font-black uppercase tracking-tight text-emerald-600">eSewa</span>
-                  </Label>
+                <div className="flex items-center space-x-2 border p-4 rounded-xl cursor-pointer hover:bg-muted/50 transition-colors has-[:checked]:border-emerald-500">
+                  <RadioGroupItem value="esewa" id="esewa-opt" />
+                  <Label htmlFor="esewa-opt" className="flex-1 cursor-pointer font-bold text-emerald-600">eSEWA</Label>
                 </div>
               </RadioGroup>
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)} className="font-bold h-12">Cancel</Button>
-            <Button onClick={confirmPayment} className="px-10 font-black uppercase tracking-widest h-12">Complete Transaction</Button>
+            <Button variant="outline" onClick={() => setIsPaymentDialogOpen(false)}>Cancel</Button>
+            <Button onClick={confirmPayment} className="px-10 font-black tracking-widest h-12 uppercase">Complete Bill</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Edit Order Dialog */}
+      {/* Edit Dialog */}
       <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-2xl font-black">
-              <Edit3 className="h-6 w-6 text-primary" />
-              Edit Pending Order
-            </DialogTitle>
-            <DialogDescription>Modify items for Table {selectedOrder?.tableNumber}.</DialogDescription>
+            <DialogTitle className="text-2xl font-black">Edit Table {selectedOrder?.tableNumber}</DialogTitle>
           </DialogHeader>
           <ScrollArea className="max-h-[60vh] py-4">
             <div className="space-y-4 pr-4">
@@ -251,7 +234,7 @@ export default function OrdersPage() {
                 <div key={item.id} className="flex items-center gap-4 p-3 bg-secondary/20 rounded-lg">
                   <div className="flex-1">
                     <h4 className="font-bold text-sm">{item.name}</h4>
-                    <p className="text-xs text-muted-foreground font-medium">Rs. {item.price}</p>
+                    <p className="text-xs text-muted-foreground">Rs. {item.price}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => updateEditQty(item.id, -1)}>
@@ -267,25 +250,22 @@ export default function OrdersPage() {
                   </div>
                 </div>
               ))}
-              {editingItems.length === 0 && (
-                <p className="text-center py-10 text-muted-foreground font-bold">No items left. Save to clear order.</p>
-              )}
             </div>
           </ScrollArea>
           <DialogFooter className="border-t pt-4">
-            <div className="flex-1 flex flex-col justify-center">
-              <span className="text-xs font-bold text-muted-foreground">RECALCULATED TOTAL</span>
-              <span className="text-xl font-black text-primary">Rs. {editingItems.reduce((acc, i) => acc + (i.price * i.qty), 0)}</span>
+            <div className="flex-1">
+              <span className="text-xs font-bold text-muted-foreground uppercase">Recalculated Total</span>
+              <p className="text-xl font-black text-primary">Rs. {editingItems.reduce((acc, i) => acc + (i.price * i.qty), 0)}</p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Discard</Button>
-              <Button onClick={saveEditedOrder} className="font-bold">Update Order</Button>
+              <Button variant="outline" onClick={() => setIsEditDialogOpen(false)}>Cancel</Button>
+              <Button onClick={saveEditedOrder} className="font-bold">Save Changes</Button>
             </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
 
-      {/* Hidden printing area */}
+      {/* Printing Area */}
       <div className="hidden">
         {orderToPrint && <Receipt order={orderToPrint} />}
       </div>
@@ -295,29 +275,29 @@ export default function OrdersPage() {
 
 function OrderCard({ order, onPay, onPrint, onEdit }: { order: Order, onPay?: () => void, onPrint?: () => void, onEdit?: () => void }) {
   const isPaid = order.status === 'paid';
-  const orderDate = order.createdAt?.toDate ? order.createdAt.toDate() : (order.createdAt instanceof Date ? order.createdAt : new Date());
+  const orderDate = order.createdAt?.toDate ? order.createdAt.toDate() : new Date();
   
   return (
-    <Card className="shadow-sm border-none overflow-hidden hover:shadow-lg transition-all group border-l-4 border-l-transparent hover:border-l-primary">
+    <Card className="shadow-sm border-none hover:shadow-lg transition-all border-l-4 border-l-transparent hover:border-l-primary">
       <CardHeader className={cn(
-        "py-4 flex flex-row items-center justify-between space-y-0",
+        "py-4 flex flex-row items-center justify-between",
         isPaid ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"
       )}>
         <div>
-          <CardTitle className="text-xl font-black">TABLE {order.tableNumber}</CardTitle>
+          <CardTitle className="text-xl font-black uppercase">TABLE {order.tableNumber}</CardTitle>
           <div className="flex items-center gap-1 text-[10px] font-bold opacity-70">
             <Clock className="h-3 w-3" />
             {format(orderDate, 'hh:mm a')}
           </div>
         </div>
         <Badge className={cn(
-          "font-black px-3 h-6 text-[10px] uppercase tracking-widest",
+          "font-black px-3 h-6 text-[10px] uppercase",
           isPaid ? "bg-emerald-500 hover:bg-emerald-600" : "bg-amber-500 hover:bg-amber-600 text-white"
         )}>
           {order.status}
         </Badge>
       </CardHeader>
-      <CardContent className="p-5 bg-card space-y-4">
+      <CardContent className="p-5 space-y-4">
         <ScrollArea className="h-[100px]">
           <div className="space-y-2">
             {order.items.map((item, idx) => (
@@ -331,24 +311,24 @@ function OrderCard({ order, onPay, onPrint, onEdit }: { order: Order, onPay?: ()
 
         <div className="border-t border-dashed pt-4 flex justify-between items-end">
           <div className="flex flex-col">
-            <span className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Total Bill</span>
-            <span className="text-2xl font-black text-primary tracking-tighter leading-none">Rs. {order.total}</span>
+            <span className="text-[10px] font-black uppercase text-muted-foreground">Total</span>
+            <span className="text-2xl font-black text-primary">Rs. {order.total}</span>
           </div>
           
           <div className="flex gap-2">
             {!isPaid && (
               <>
-                <Button size="icon" variant="secondary" className="h-10 w-10 rounded-lg shadow-sm" onClick={onEdit} title="Edit Items">
+                <Button size="icon" variant="secondary" className="h-10 w-10" onClick={onEdit}>
                   <Edit3 className="h-4 w-4" />
                 </Button>
-                <Button size="sm" className="h-10 px-4 font-black uppercase text-[10px] tracking-widest shadow-md" onClick={onPay}>
-                  Settle
+                <Button size="sm" className="h-10 px-4 font-black uppercase text-[10px] tracking-widest" onClick={onPay}>
+                  SETTLE
                 </Button>
               </>
             )}
             {isPaid && (
-              <Button variant="outline" size="sm" className="h-10 font-black uppercase text-[10px] tracking-widest gap-2" onClick={onPrint}>
-                <Printer className="h-4 w-4" /> Bill
+              <Button variant="outline" size="sm" className="h-10 font-black uppercase text-[10px] gap-2" onClick={onPrint}>
+                <Printer className="h-4 w-4" /> BILL
               </Button>
             )}
           </div>
