@@ -13,6 +13,7 @@ export interface MenuItem {
   price: number;
   category: 'Drinks' | 'Snacks' | 'Meals';
   createdAt: any;
+  updatedAt?: any;
 }
 
 export interface OrderItem {

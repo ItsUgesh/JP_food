@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,37 +26,32 @@ import {
   SelectTrigger, 
   SelectValue 
 } from '@/components/ui/select';
-import { Plus, Edit2, Trash2, Search } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, Loader2 } from 'lucide-react';
 import { MenuItem } from '@/types';
-import { db } from '@/lib/firebase';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
 import { 
   collection, 
   query, 
   orderBy, 
-  onSnapshot, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
   doc, 
   serverTimestamp 
 } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { addDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from '@/firebase';
 
 export default function MenuAdminPage() {
-  const [items, setItems] = useState<MenuItem[]>([]);
   const [search, setSearch] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
-  const [formData, setFormData] = useState({ name: '', price: '', category: 'Drinks' });
+  const [formData, setFormData] = useState({ name: '', price: '', category: 'Drinks' as 'Drinks' | 'Snacks' | 'Meals' });
   const { toast } = useToast();
+  const firestore = useFirestore();
 
-  useEffect(() => {
-    const q = query(collection(db, 'menu_items'), orderBy('name', 'asc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MenuItem)));
-    });
-    return () => unsubscribe();
-  }, []);
+  const menuQuery = useMemoFirebase(() => {
+    return query(collection(firestore, 'menuItems'), orderBy('name', 'asc'));
+  }, [firestore]);
+
+  const { data: items, isLoading } = useCollection<MenuItem>(menuQuery);
 
   const openAddDialog = () => {
     setEditingItem(null);
@@ -70,9 +65,9 @@ export default function MenuAdminPage() {
     setIsDialogOpen(true);
   };
 
-  const handleSave = async () => {
-    if (!formData.name || !formData.price) {
-      toast({ title: "Validation Error", description: "Name and price are required.", variant: "destructive" });
+  const handleSave = () => {
+    if (!formData.name || !formData.price || isNaN(parseFloat(formData.price))) {
+      toast({ title: "Validation Error", description: "Valid name and numeric price are required.", variant: "destructive" });
       return;
     }
 
@@ -83,35 +78,27 @@ export default function MenuAdminPage() {
       updatedAt: serverTimestamp()
     };
 
-    try {
-      if (editingItem) {
-        await updateDoc(doc(db, 'menu_items', editingItem.id), itemData);
-        toast({ title: "Updated", description: "Menu item updated successfully." });
-      } else {
-        await addDoc(collection(db, 'menu_items'), {
-          ...itemData,
-          createdAt: serverTimestamp()
-        });
-        toast({ title: "Created", description: "New menu item added successfully." });
-      }
-      setIsDialogOpen(false);
-    } catch (error) {
-      toast({ title: "Error", description: "Operation failed. Check permissions.", variant: "destructive" });
+    if (editingItem) {
+      updateDocumentNonBlocking(doc(firestore, 'menuItems', editingItem.id), itemData);
+      toast({ title: "Updating...", description: "Changes are being saved." });
+    } else {
+      addDocumentNonBlocking(collection(firestore, 'menuItems'), {
+        ...itemData,
+        createdAt: serverTimestamp()
+      });
+      toast({ title: "Creating...", description: "Adding new menu item." });
     }
+    setIsDialogOpen(false);
   };
 
-  const handleDelete = async (id: string) => {
+  const handleDelete = (id: string) => {
     if (confirm('Are you sure you want to delete this item?')) {
-      try {
-        await deleteDoc(doc(db, 'menu_items', id));
-        toast({ title: "Deleted", description: "Menu item removed." });
-      } catch (error) {
-        toast({ title: "Error", description: "Failed to delete item.", variant: "destructive" });
-      }
+      deleteDocumentNonBlocking(doc(firestore, 'menuItems', id));
+      toast({ title: "Deleting...", description: "Item is being removed." });
     }
   };
 
-  const filteredItems = items.filter(i => 
+  const filteredItems = (items || []).filter(i => 
     i.name.toLowerCase().includes(search.toLowerCase()) || 
     i.category.toLowerCase().includes(search.toLowerCase())
   );
@@ -125,7 +112,7 @@ export default function MenuAdminPage() {
             <h1 className="text-3xl font-black text-primary">Menu Management</h1>
             <p className="text-muted-foreground">Add, update or remove items from your digital menu.</p>
           </div>
-          <Button onClick={openAddDialog} className="gap-2 font-bold h-12 px-6">
+          <Button onClick={openAddDialog} className="gap-2 font-bold h-12 px-6 shadow-lg shadow-primary/20">
             <Plus className="h-5 w-5" />
             Add New Item
           </Button>
@@ -142,7 +129,7 @@ export default function MenuAdminPage() {
             />
           </div>
 
-          <div className="rounded-md border">
+          <div className="rounded-md border overflow-hidden">
             <Table>
               <TableHeader className="bg-secondary/20">
                 <TableRow>
@@ -153,8 +140,14 @@ export default function MenuAdminPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredItems.map((item) => (
-                  <TableRow key={item.id}>
+                {isLoading ? (
+                  <TableRow>
+                    <TableCell colSpan={4} className="text-center py-10">
+                      <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary opacity-50" />
+                    </TableCell>
+                  </TableRow>
+                ) : filteredItems.map((item) => (
+                  <TableRow key={item.id} className="hover:bg-muted/50 transition-colors">
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell>{item.category}</TableCell>
                     <TableCell>Rs. {item.price}</TableCell>
@@ -168,7 +161,7 @@ export default function MenuAdminPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {filteredItems.length === 0 && (
+                {!isLoading && filteredItems.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={4} className="text-center py-10 text-muted-foreground">
                       No items found matching your criteria.
@@ -200,7 +193,7 @@ export default function MenuAdminPage() {
                 <label className="text-sm font-bold uppercase text-muted-foreground">Category</label>
                 <Select 
                   value={formData.category} 
-                  onValueChange={(v) => setFormData({...formData, category: v})}
+                  onValueChange={(v: any) => setFormData({...formData, category: v})}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Category" />
@@ -225,7 +218,7 @@ export default function MenuAdminPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancel</Button>
-            <Button onClick={handleSave}>Save Item</Button>
+            <Button onClick={handleSave} className="font-bold">Save Item</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

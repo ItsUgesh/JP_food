@@ -8,42 +8,32 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Plus, Minus, Trash2, ShoppingCart, Search } from 'lucide-react';
+import { Plus, Minus, Trash2, ShoppingCart, Search, Loader2 } from 'lucide-react';
 import { MenuItem, OrderItem } from '@/types';
-import { db } from '@/lib/firebase';
-import { collection, addDoc, serverTimestamp, getDocs, query, orderBy } from 'firebase/firestore';
+import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { collection, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
+import { addDocumentNonBlocking } from '@/firebase';
 
 export default function POSPage() {
-  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [filteredItems, setFilteredItems] = useState<MenuItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
   const [cart, setCart] = useState<OrderItem[]>([]);
   const [tableNumber, setTableNumber] = useState('');
   const { toast } = useToast();
+  const firestore = useFirestore();
 
-  useEffect(() => {
-    const fetchMenu = async () => {
-      const q = query(collection(db, 'menu_items'), orderBy('name', 'asc'));
-      const snapshot = await getDocs(q);
-      const items = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MenuItem));
-      setMenuItems(items);
-      setFilteredItems(items);
-    };
-    fetchMenu();
-  }, []);
+  const menuQuery = useMemoFirebase(() => {
+    return query(collection(firestore, 'menuItems'), orderBy('name', 'asc'));
+  }, [firestore]);
 
-  useEffect(() => {
-    let result = menuItems;
-    if (activeCategory !== 'All') {
-      result = result.filter(item => item.category === activeCategory);
-    }
-    if (searchQuery) {
-      result = result.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
-    }
-    setFilteredItems(result);
-  }, [searchQuery, activeCategory, menuItems]);
+  const { data: menuItems, isLoading } = useCollection<MenuItem>(menuQuery);
+
+  const filteredItems = (menuItems || []).filter(item => {
+    const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesCategory = activeCategory === 'All' || item.category === activeCategory;
+    return matchesSearch && matchesCategory;
+  });
 
   const addToCart = (item: MenuItem) => {
     setCart(prev => {
@@ -71,7 +61,7 @@ export default function POSPage() {
 
   const cartTotal = cart.reduce((acc, item) => acc + (item.price * item.qty), 0);
 
-  const placeOrder = async () => {
+  const placeOrder = () => {
     if (!tableNumber) {
       toast({ title: "Table Required", description: "Please enter a table number.", variant: "destructive" });
       return;
@@ -81,20 +71,17 @@ export default function POSPage() {
       return;
     }
 
-    try {
-      await addDoc(collection(db, 'orders'), {
-        tableNumber,
-        items: cart,
-        total: cartTotal,
-        status: 'pending',
-        createdAt: serverTimestamp(),
-      });
-      setCart([]);
-      setTableNumber('');
-      toast({ title: "Order Placed", description: `Order for Table ${tableNumber} has been created.` });
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to place order. Try again.", variant: "destructive" });
-    }
+    addDocumentNonBlocking(collection(firestore, 'orders'), {
+      tableNumber,
+      items: cart,
+      total: cartTotal,
+      status: 'pending',
+      createdAt: serverTimestamp(),
+    });
+
+    setCart([]);
+    setTableNumber('');
+    toast({ title: "Order Placed", description: `Order for Table ${tableNumber} has been created.` });
   };
 
   return (
@@ -124,35 +111,47 @@ export default function POSPage() {
           </div>
 
           <ScrollArea className="flex-1">
-            <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
-              {filteredItems.map(item => (
-                <Card 
-                  key={item.id} 
-                  className="group cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all border-none shadow-sm overflow-hidden"
-                  onClick={() => addToCart(item)}
-                >
-                  <div className="aspect-[4/3] bg-muted relative">
-                    <img 
-                      src={`https://picsum.photos/seed/${item.id}/400/300`} 
-                      alt={item.name}
-                      className="object-cover w-full h-full group-hover:scale-105 transition-transform"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
-                      <Button size="sm" className="w-full">Add to Order</Button>
+            {isLoading ? (
+              <div className="flex items-center justify-center py-20">
+                <Loader2 className="h-10 w-10 animate-spin text-primary opacity-50" />
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
+                {filteredItems.map(item => (
+                  <Card 
+                    key={item.id} 
+                    className="group cursor-pointer hover:ring-2 hover:ring-primary/50 transition-all border-none shadow-sm overflow-hidden"
+                    onClick={() => addToCart(item)}
+                  >
+                    <div className="aspect-[4/3] bg-muted relative">
+                      <img 
+                        src={`https://picsum.photos/seed/${item.id}/400/300`} 
+                        alt={item.name}
+                        className="object-cover w-full h-full group-hover:scale-105 transition-transform"
+                        data-ai-hint="food drink"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-4">
+                        <Button size="sm" className="w-full font-bold">Add to Order</Button>
+                      </div>
                     </div>
-                  </div>
-                  <CardContent className="p-4 bg-card">
-                    <div className="flex justify-between items-start mb-1">
-                      <h3 className="font-semibold text-lg line-clamp-1">{item.name}</h3>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-primary font-bold">Rs. {item.price}</span>
-                      <Badge variant="outline" className="text-[10px] uppercase font-bold">{item.category}</Badge>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                    <CardContent className="p-4 bg-card">
+                      <div className="flex justify-between items-start mb-1">
+                        <h3 className="font-semibold text-lg line-clamp-1">{item.name}</h3>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-primary font-bold">Rs. {item.price}</span>
+                        <Badge variant="outline" className="text-[10px] uppercase font-bold">{item.category}</Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+            {!isLoading && filteredItems.length === 0 && (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <p>No items found.</p>
+              </div>
+            )}
           </ScrollArea>
         </div>
 
