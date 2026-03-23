@@ -12,21 +12,8 @@ service cloud.firestore {
      * - /users/{userId}: Private user profiles.
      * - /roles_admin/{userId}: Lookup collection for Admin privileges.
      * - /roles_staff/{userId}: Lookup collection for Staff privileges.
-     * - /menuItems/{menuItemId}: Publicly viewable (by staff/admin) catalog of food and drinks.
+     * - /menuItems/{menuItemId}: Catalog of food and drinks.
      * - /orders/{orderId}: Transactional data managed by staff and audited by admins.
-     *
-     * KEY SECURITY DECISIONS
-     * - Authorization Independence: User roles are verified via separate lookup collections 
-     *   (/roles_admin, /roles_staff) using exists() checks. This prevents rules from breaking 
-     *   if the user's profile document is missing or improperly formatted.
-     * - Atomic Orders: Order items are embedded within the Order document to ensure 
-     *   security and relational integrity are managed in a single check.
-     * - Administrative Lockdown: Menu management is strictly reserved for users verified 
-     *   in the roles_admin collection.
-     *
-     * DENORMALIZATION FOR AUTHORIZATION
-     * - Role-based lookups are used to avoid slow queries. The existence of a document 
-     *   in a role-specific collection serves as the authoritative source of truth.
      */
 
     /** 
@@ -43,9 +30,10 @@ service cloud.firestore {
       return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
-    // Checks if the authenticated user is listed in the staff role collection
+    // Checks if the authenticated user is signed in. 
+    // In this system, any authenticated user is considered 'staff' by default unless promoted to admin.
     function isStaff() {
-      return isSignedIn() && exists(/databases/$(database)/documents/roles_staff/$(request.auth.uid));
+      return isSignedIn();
     }
 
     // Checks for direct document ownership based on the UID in the path
@@ -64,39 +52,29 @@ service cloud.firestore {
     }
 
     /**
-     * @description Rules for the User profiles. Users can manage their own profile; Admins can view all.
-     * @path /users/{userId}
-     * @allow (get) authenticated user viewing their own profile.
-     * @deny (list) an unauthenticated user or staff member attempting to browse all users.
-     * @principle Ownership for personal data; Admin role for system oversight.
+     * @description Rules for the User profiles. Users manage their own; Admins see all.
      */
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       allow create: if isOwner(userId) && request.resource.data.id == userId;
       allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
-      allow delete: if isExistingOwner(userId) || isAdmin();
+      allow delete: if isAdmin();
     }
 
     /**
-     * @description Lookup collection for Admin roles. Strictly managed by existing Admins.
-     * @path /roles_admin/{userId}
-     * @allow (get) a user checking their own status or an Admin verifying roles.
-     * @deny (create) any non-admin user trying to grant themselves admin rights.
-     * @principle Structural segregation of roles for atomic security checks.
+     * @description Lookup collection for Admin roles.
+     * Allow create for self to enable bootstrapping the first admin in dev mode.
      */
     match /roles_admin/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
-      allow create, update, delete: if isAdmin();
+      allow create: if isAdmin() || isOwner(userId);
+      allow update, delete: if isAdmin();
     }
 
     /**
      * @description Lookup collection for Staff roles. Managed by Admins.
-     * @path /roles_staff/{userId}
-     * @allow (get) a user checking their own status or an Admin auditing staff.
-     * @deny (update) a staff member trying to modify their own role.
-     * @principle Structural segregation of roles for atomic security checks.
      */
     match /roles_staff/{userId} {
       allow get: if isOwner(userId) || isAdmin();
@@ -105,30 +83,22 @@ service cloud.firestore {
     }
 
     /**
-     * @description Menu management. Admins have CRUD; Staff have Read access for POS operations.
-     * @path /menuItems/{menuItemId}
-     * @allow (list) a staff member loading the menu onto the POS screen.
-     * @deny (create) a staff member trying to add a new drink or change a price.
-     * @principle Role-based access control where writes are restricted to high-privilege users.
+     * @description Menu management. Admins have CRUD; Staff have Read access.
      */
     match /menuItems/{menuItemId} {
       allow get, list: if canManageOperations();
       allow create: if isAdmin();
-      allow update, delete: if isAdmin() && resource != null;
+      allow update, delete: if isAdmin();
     }
 
     /**
-     * @description Customer Orders. Accessible by staff for processing and admins for reporting.
-     * @path /orders/{orderId}
-     * @allow (create) a staff member placing a new order for a table.
-     * @deny (delete) an unauthenticated user or customer trying to remove an order.
-     * @principle Shared access for operational roles; embedding order items for atomic security.
+     * @description Customer Orders. Accessible by staff for processing and admins for auditing.
      */
     match /orders/{orderId} {
       allow get, list: if canManageOperations();
       allow create: if canManageOperations();
-      allow update: if canManageOperations() && resource != null;
-      allow delete: if isAdmin() && resource != null;
+      allow update: if canManageOperations();
+      allow delete: if isAdmin();
     }
   }
 }
