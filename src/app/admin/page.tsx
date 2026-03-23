@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useState, useEffect } from 'react';
@@ -20,7 +21,10 @@ import {
   TrendingUp,
   Settings,
   ShoppingBag,
-  Zap
+  Zap,
+  IndianRupee,
+  Wallet,
+  ArrowUpRight
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -33,15 +37,16 @@ import {
   updateDocumentNonBlocking,
   useDoc
 } from '@/firebase';
-import { doc, collection, query, where, getDocs, limit } from 'firebase/firestore';
+import { doc, collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { UserProfile, Order } from '@/types';
+import { formatNepalDateID, startOfNepalDay, endOfNepalDay } from '@/lib/date-utils';
 
 export default function AdminDashboard() {
   const { user } = useUser();
   const firestore = useFirestore();
   const { toast } = useToast();
-  const [stats, setStats] = useState({ revenue: 0, orders: 0 });
+  const [stats, setStats] = useState({ revenue: 0, orders: 0, cash: 0, esewa: 0 });
 
   const usersQuery = useMemoFirebase(() => query(collection(firestore, 'users')), [firestore]);
   const { data: allUsers, isLoading: isUsersLoading } = useCollection<UserProfile>(usersQuery);
@@ -54,18 +59,44 @@ export default function AdminDashboard() {
   const { data: myAdminRole } = useDoc(myAdminRoleRef);
 
   useEffect(() => {
-    const fetchStats = async () => {
+    const fetchTodayStats = async () => {
       try {
-        const q = query(collection(firestore, 'orders'), where('status', '==', 'paid'));
+        const todayId = formatNepalDateID();
+        const start = startOfNepalDay();
+        const end = endOfNepalDay();
+        
+        const q = query(
+          collection(firestore, 'orders'), 
+          where('status', '==', 'paid'),
+          where('paidAt', '>=', start),
+          where('paidAt', '<=', end)
+        );
+        
         const snapshot = await getDocs(q);
         const orders = snapshot.docs.map(d => d.data() as Order);
+        
         const revenue = orders.reduce((acc, curr) => acc + curr.total, 0);
-        setStats({ revenue, orders: orders.length });
+        const cash = orders.reduce((acc, curr) => curr.paymentMethod === 'cash' ? acc + curr.total : acc, 0);
+        const esewa = orders.reduce((acc, curr) => curr.paymentMethod === 'esewa' ? acc + curr.total : acc, 0);
+        
+        setStats({ revenue, orders: orders.length, cash, esewa });
+
+        // Lazy aggregation: Save today's report
+        setDocumentNonBlocking(doc(firestore, 'daily_reports', todayId), {
+          id: todayId,
+          date: todayId,
+          totalRevenue: revenue,
+          cashRevenue: cash,
+          esewaRevenue: esewa,
+          numberOfOrders: orders.length,
+          updatedAt: new Date()
+        }, { merge: true });
+
       } catch (err) {
         console.error("Failed to fetch admin stats:", err);
       }
     };
-    if (user) fetchStats();
+    if (user) fetchTodayStats();
   }, [firestore, user]);
 
   const toggleAdminRole = (targetUser: UserProfile, isCurrentlyAdmin: boolean) => {
@@ -101,87 +132,148 @@ export default function AdminDashboard() {
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
             <h1 className="text-3xl font-black text-primary uppercase tracking-tighter">Management Dashboard</h1>
-            <p className="text-muted-foreground text-sm">Review performance and manage user permissions.</p>
+            <p className="text-muted-foreground text-sm">Real-time business performance (Nepal Time).</p>
           </div>
-          {!myAdminRole && (
-            <Button onClick={bootstrapMe} variant="outline" className="gap-2 border-primary text-primary font-black uppercase text-xs">
-              <Zap className="h-4 w-4 fill-primary" /> Bootstrap Admin Access
-            </Button>
-          )}
+          <div className="flex gap-2">
+            <Link href="/admin/insights">
+              <Button variant="outline" className="gap-2 font-bold uppercase text-xs h-10">
+                <TrendingUp className="h-4 w-4" /> View Insights
+              </Button>
+            </Link>
+            {!myAdminRole && (
+              <Button onClick={bootstrapMe} variant="outline" className="gap-2 border-primary text-primary font-black uppercase text-xs h-10">
+                <Zap className="h-4 w-4 fill-primary" /> Bootstrap Admin
+              </Button>
+            )}
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="bg-primary text-primary-foreground border-none shadow-xl">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-bold uppercase opacity-80">Total Revenue</CardTitle>
+              <CardTitle className="text-[10px] font-black uppercase opacity-80">Today Revenue</CardTitle>
               <TrendingUp className="h-4 w-4 opacity-80" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-black">Rs. {stats.revenue}</div>
+              <div className="text-2xl font-black">Rs. {stats.revenue}</div>
+              <p className="text-[10px] opacity-70">Nepal Time: {formatNepalDateID()}</p>
             </CardContent>
           </Card>
+          
+          <Card className="border-none shadow-sm bg-emerald-50 dark:bg-emerald-950/20">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <CardTitle className="text-[10px] font-black uppercase text-emerald-700">eSewa Revenue</CardTitle>
+              <IndianRupee className="h-4 w-4 text-emerald-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-emerald-600">Rs. {stats.esewa}</div>
+              <p className="text-[10px] text-muted-foreground">{Math.round((stats.esewa / (stats.revenue || 1)) * 100)}% of today</p>
+            </CardContent>
+          </Card>
+
+          <Card className="border-none shadow-sm bg-slate-50 dark:bg-slate-900/20">
+            <CardHeader className="pb-2 flex flex-row items-center justify-between">
+              <CardTitle className="text-[10px] font-black uppercase text-slate-600">Cash Revenue</CardTitle>
+              <Wallet className="h-4 w-4 text-slate-500" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-black text-slate-700">Rs. {stats.cash}</div>
+              <p className="text-[10px] text-muted-foreground">{Math.round((stats.cash / (stats.revenue || 1)) * 100)}% of today</p>
+            </CardContent>
+          </Card>
+
           <Card className="border-none shadow-sm">
             <CardHeader className="pb-2 flex flex-row items-center justify-between">
-              <CardTitle className="text-sm font-bold uppercase text-muted-foreground">Settled Orders</CardTitle>
+              <CardTitle className="text-[10px] font-black uppercase text-muted-foreground">Paid Orders</CardTitle>
               <ShoppingBag className="h-4 w-4 text-primary" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-black">{stats.orders}</div>
+              <div className="text-2xl font-black">{stats.orders}</div>
+              <p className="text-[10px] text-muted-foreground">Successful settlements</p>
             </CardContent>
           </Card>
-          <Link href="/admin/menu">
-            <Card className="hover:border-primary transition-all cursor-pointer border-none shadow-sm bg-secondary/50 h-full group">
-              <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-bold uppercase text-muted-foreground">Menu Editor</CardTitle>
-                <Settings className="h-4 w-4 text-primary group-hover:rotate-90 transition-transform" />
-              </CardHeader>
-              <CardContent className="text-xs font-black text-primary">MANAGE CATALOG →</CardContent>
-            </Card>
-          </Link>
         </div>
 
-        <section className="space-y-4">
-          <div className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-primary" />
-            <h2 className="text-xl font-black uppercase tracking-tight">Staff & Roles</h2>
-          </div>
-          <Card className="border-none shadow-sm overflow-hidden">
-            <Table>
-              <TableHeader className="bg-secondary/20">
-                <TableRow>
-                  <TableHead className="text-[10px] font-black uppercase">User</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase">Email</TableHead>
-                  <TableHead className="text-[10px] font-black uppercase">Role</TableHead>
-                  <TableHead className="text-right text-[10px] font-black uppercase">Action</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {isUsersLoading ? (
-                  <TableRow><TableCell colSpan={4} className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary opacity-30" /></TableCell></TableRow>
-                ) : allUsers?.length === 0 ? (
-                  <TableRow><TableCell colSpan={4} className="text-center py-10 text-muted-foreground font-medium">No users found.</TableCell></TableRow>
-                ) : allUsers?.map((u) => {
-                  const isAdmin = adminUids.has(u.id);
-                  return (
-                    <TableRow key={u.id}>
-                      <TableCell className="font-bold text-sm">{u.name}</TableCell>
-                      <TableCell className="text-muted-foreground text-xs">{u.email}</TableCell>
-                      <TableCell>
-                        {isAdmin ? <Badge className="bg-emerald-500 gap-1 text-[9px] font-black"><ShieldCheck className="h-3 w-3" /> ADMIN</Badge> : <Badge variant="secondary" className="text-[9px] font-black">STAFF</Badge>}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button variant="ghost" size="sm" className="font-black text-[10px] uppercase h-8" onClick={() => toggleAdminRole(u, isAdmin)} disabled={u.id === user?.uid && isAdmin}>
-                          {isAdmin ? "Demote" : "Promote"}
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </Card>
-        </section>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                <h2 className="text-xl font-black uppercase tracking-tight">Staff Management</h2>
+              </div>
+            </div>
+            <Card className="border-none shadow-sm overflow-hidden">
+              <Table>
+                <TableHeader className="bg-secondary/20">
+                  <TableRow>
+                    <TableHead className="text-[10px] font-black uppercase">User</TableHead>
+                    <TableHead className="text-[10px] font-black uppercase">Role</TableHead>
+                    <TableHead className="text-right text-[10px] font-black uppercase">Action</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {isUsersLoading ? (
+                    <TableRow><TableCell colSpan={3} className="text-center py-10"><Loader2 className="h-6 w-6 animate-spin mx-auto text-primary opacity-30" /></TableCell></TableRow>
+                  ) : allUsers?.map((u) => {
+                    const isAdmin = adminUids.has(u.id);
+                    return (
+                      <TableRow key={u.id}>
+                        <TableCell>
+                          <div className="font-bold text-sm">{u.name}</div>
+                          <div className="text-[9px] text-muted-foreground">{u.email}</div>
+                        </TableCell>
+                        <TableCell>
+                          {isAdmin ? <Badge className="bg-emerald-500 text-[9px] font-black">ADMIN</Badge> : <Badge variant="secondary" className="text-[9px] font-black">STAFF</Badge>}
+                        </TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="sm" className="font-black text-[10px] uppercase h-8" onClick={() => toggleAdminRole(u, isAdmin)} disabled={u.id === user?.uid && isAdmin}>
+                            {isAdmin ? "Demote" : "Promote"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </Card>
+          </section>
+
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Activity className="h-5 w-5 text-primary" />
+                <h2 className="text-xl font-black uppercase tracking-tight">Quick Links</h2>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Link href="/admin/transactions" className="group">
+                <Card className="hover:border-primary transition-all shadow-sm border-none bg-secondary/30 h-full">
+                  <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                    <CardTitle className="text-[10px] font-black uppercase">Live Transactions</CardTitle>
+                    <ArrowUpRight className="h-4 w-4 group-hover:translate-x-1 group-hover:-translate-y-1 transition-transform" />
+                  </CardHeader>
+                  <CardContent className="text-[10px] font-bold text-muted-foreground">Monitor all payments in real-time.</CardContent>
+                </Card>
+              </Link>
+              <Link href="/admin/menu" className="group">
+                <Card className="hover:border-primary transition-all shadow-sm border-none bg-secondary/30 h-full">
+                  <CardHeader className="pb-2 flex flex-row items-center justify-between">
+                    <CardTitle className="text-[10px] font-black uppercase">Menu Catalog</CardTitle>
+                    <Settings className="h-4 w-4 group-hover:rotate-45 transition-transform" />
+                  </CardHeader>
+                  <CardContent className="text-[10px] font-bold text-muted-foreground">Manage products, categories, and pricing.</CardContent>
+                </Card>
+              </Link>
+            </div>
+          </section>
+        </div>
       </main>
     </div>
+  );
+}
+
+function Activity({ className }: { className?: string }) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
   );
 }

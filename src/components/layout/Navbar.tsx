@@ -1,3 +1,4 @@
+
 "use client"
 
 import Link from 'next/link';
@@ -11,7 +12,9 @@ import {
   Moon,
   Sun,
   LayoutDashboard,
-  ShieldCheck
+  ShieldCheck,
+  TrendingUp,
+  CreditCard
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
@@ -50,7 +53,9 @@ export function Navbar() {
   const navItems = [
     { name: 'POS', href: '/pos', icon: ShoppingBag, public: true },
     { name: 'Orders', href: '/orders', icon: ClipboardList, public: true },
-    { name: 'Admin', href: '/admin', icon: LayoutDashboard, adminOnly: true },
+    { name: 'Dashboard', href: '/admin', icon: LayoutDashboard, adminOnly: true },
+    { name: 'Live', href: '/admin/transactions', icon: CreditCard, adminOnly: true },
+    { name: 'Insights', href: '/admin/insights', icon: TrendingUp, adminOnly: true },
     { name: 'Menu', href: '/admin/menu', icon: Settings, adminOnly: true },
   ];
 

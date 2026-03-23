@@ -1,3 +1,4 @@
+
 export type Role = 'admin' | 'staff';
 
 export interface UserProfile {
@@ -35,4 +36,13 @@ export interface Order {
   createdAt: any;
   updatedAt?: any;
   paidAt?: any;
+}
+
+export interface DailyReport {
+  id: string; // YYYY-MM-DD
+  date: string;
+  totalRevenue: number;
+  cashRevenue: number;
+  esewaRevenue: number;
+  numberOfOrders: number;
 }

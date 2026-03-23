@@ -1,3 +1,4 @@
+
 {
   "entities": {
     "User": {
@@ -67,41 +68,6 @@
         "createdAt"
       ]
     },
-    "OrderItem": {
-      "$schema": "http://json-schema.org/draft-07/schema#",
-      "title": "OrderItem",
-      "type": "object",
-      "description": "Represents a single item within an order, capturing its state (name, price, quantity) at the time of ordering.",
-      "properties": {
-        "id": {
-          "type": "string",
-          "description": "Unique identifier for the OrderItem entity."
-        },
-        "orderId": {
-          "type": "string",
-          "description": "Reference to the parent Order. (Relationship: Order 1:N OrderItem)"
-        },
-        "name": {
-          "type": "string",
-          "description": "The name of the item at the time it was added to the order."
-        },
-        "price": {
-          "type": "number",
-          "description": "The price of the item at the time it was added to the order."
-        },
-        "quantity": {
-          "type": "number",
-          "description": "The quantity of this item included in the order."
-        }
-      },
-      "required": [
-        "id",
-        "orderId",
-        "name",
-        "price",
-        "quantity"
-      ]
-    },
     "Order": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "title": "Order",
@@ -116,11 +82,10 @@
           "type": "string",
           "description": "The table number associated with the order."
         },
-        "orderItemIds": {
+        "items": {
           "type": "array",
-          "description": "References to OrderItem entities that belong to this order. (Relationship: Order 1:N OrderItem)",
           "items": {
-            "type": "string"
+            "$ref": "#/backend/entities/OrderItem"
           }
         },
         "total": {
@@ -129,37 +94,75 @@
         },
         "status": {
           "type": "string",
-          "description": "The current status of the order (e.g., \"pending\", \"paid\")."
-        },
-        "createdAt": {
-          "type": "string",
-          "description": "Timestamp indicating when the order was created.",
-          "format": "date-time"
+          "description": "The current status of the order.",
+          "enum": ["pending", "paid"]
         },
         "paymentMethod": {
           "type": "string",
-          "description": "The method used for payment (e.g., \"cash\", \"eSewa\"). This field is populated only if the order status is 'paid'."
+          "description": "The method used for payment.",
+          "enum": ["cash", "esewa"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
         },
         "paidAt": {
           "type": "string",
-          "description": "Timestamp indicating when the order was marked as paid. This field is populated only if the order status is 'paid'.",
           "format": "date-time"
         }
       },
       "required": [
         "id",
         "tableNumber",
-        "orderItemIds",
+        "items",
         "total",
         "status",
         "createdAt"
       ]
+    },
+    "OrderItem": {
+      "title": "OrderItem",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "qty": { "type": "number" }
+      }
+    },
+    "DailyReport": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "title": "DailyReport",
+      "type": "object",
+      "description": "Structured daily revenue report for analytics.",
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Date ID in format YYYY-MM-DD (Nepal Time)."
+        },
+        "date": {
+          "type": "string",
+          "format": "date"
+        },
+        "totalRevenue": {
+          "type": "number"
+        },
+        "cashRevenue": {
+          "type": "number"
+        },
+        "esewaRevenue": {
+          "type": "number"
+        },
+        "numberOfOrders": {
+          "type": "number"
+        }
+      },
+      "required": ["id", "date", "totalRevenue", "cashRevenue", "esewaRevenue", "numberOfOrders"]
     }
   },
   "auth": {
     "providers": [
-      "password",
-      "anonymous"
+      "password"
     ]
   },
   "firestore": {
@@ -171,13 +174,7 @@
           "schema": {
             "$ref": "#/backend/entities/User"
           },
-          "description": "Stores individual user profiles.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "The unique identifier of the user."
-            }
-          ]
+          "description": "Stores individual user profiles."
         }
       },
       {
@@ -187,13 +184,7 @@
           "schema": {
             "$ref": "#/backend/entities/User"
           },
-          "description": "A lookup collection for admin roles.",
-          "params": [
-            {
-              "name": "userId",
-              "description": "User ID."
-            }
-          ]
+          "description": "A lookup collection for admin roles."
         }
       },
       {
@@ -203,13 +194,7 @@
           "schema": {
             "$ref": "#/backend/entities/MenuItem"
           },
-          "description": "Stores menu items.",
-          "params": [
-            {
-              "name": "menuItemId",
-              "description": "Menu item ID."
-            }
-          ]
+          "description": "Stores menu items."
         }
       },
       {
@@ -219,13 +204,17 @@
           "schema": {
             "$ref": "#/backend/entities/Order"
           },
-          "description": "Stores customer orders.",
-          "params": [
-            {
-              "name": "orderId",
-              "description": "Order ID."
-            }
-          ]
+          "description": "Stores customer orders."
+        }
+      },
+      {
+        "path": "/daily_reports/{reportId}",
+        "definition": {
+          "entityName": "DailyReport",
+          "schema": {
+            "$ref": "#/backend/entities/DailyReport"
+          },
+          "description": "Stores aggregated daily reports."
         }
       }
     ]
