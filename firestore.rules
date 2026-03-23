@@ -7,7 +7,6 @@ service cloud.firestore {
     }
 
     function isAdmin() {
-      // Check if the user's UID exists in the roles_admin collection
       return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
@@ -26,30 +25,28 @@ service cloud.firestore {
 
     // Menu Catalog
     match /menu_items/{itemId} {
-      // Allow any signed-in user to view the menu
       allow get, list: if isSignedIn();
-      // Only admins can modify the menu
       allow create, update, delete: if isAdmin();
     }
 
     // Orders
     match /orders/{orderId} {
-      // Explicitly allow both single doc get and collection list for all staff
-      allow get, list: if isSignedIn();
-      allow create: if isSignedIn();
+      // Both staff and admins can view and create orders
+      allow get, list, create: if isSignedIn();
+      
+      // Updates allowed for pending orders (all staff) or any order (admins)
       allow update: if isSignedIn() && (
-        // Only allow updating pending orders, or allow admins full access
         (resource.data.status == 'pending') || isAdmin()
       );
+      
+      // Only admins can delete orders
       allow delete: if isAdmin();
     }
 
     // Daily Reports
     match /daily_reports/{reportId} {
-      // Allow viewing stats to all signed in users
       allow get, list: if isSignedIn();
-      // Allow admins (or the system via admin-triggered actions) to write reports
-      allow write: if isSignedIn(); // Broaden for development so lazy aggregation works
+      allow write: if isSignedIn();
     }
   }
 }

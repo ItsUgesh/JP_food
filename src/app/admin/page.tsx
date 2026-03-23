@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState, useEffect } from 'react';
@@ -24,7 +23,8 @@ import {
   Zap,
   IndianRupee,
   Wallet,
-  ArrowUpRight
+  ArrowUpRight,
+  Activity
 } from 'lucide-react';
 import Link from 'next/link';
 import { 
@@ -35,7 +35,9 @@ import {
   setDocumentNonBlocking,
   deleteDocumentNonBlocking,
   updateDocumentNonBlocking,
-  useDoc
+  useDoc,
+  errorEmitter,
+  FirestorePermissionError
 } from '@/firebase';
 import { doc, collection, query, where, getDocs, limit, orderBy } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
@@ -60,43 +62,49 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     const fetchTodayStats = async () => {
-      try {
-        const todayId = formatNepalDateID();
-        const start = startOfNepalDay();
-        const end = endOfNepalDay();
-        
-        const q = query(
-          collection(firestore, 'orders'), 
-          where('status', '==', 'paid'),
-          where('paidAt', '>=', start),
-          where('paidAt', '<=', end)
-        );
-        
-        const snapshot = await getDocs(q);
-        const orders = snapshot.docs.map(d => d.data() as Order);
-        
-        const revenue = orders.reduce((acc, curr) => acc + curr.total, 0);
-        const cash = orders.reduce((acc, curr) => curr.paymentMethod === 'cash' ? acc + curr.total : acc, 0);
-        const esewa = orders.reduce((acc, curr) => curr.paymentMethod === 'esewa' ? acc + curr.total : acc, 0);
-        
-        setStats({ revenue, orders: orders.length, cash, esewa });
+      if (!user) return;
+      
+      const todayId = formatNepalDateID();
+      const start = startOfNepalDay();
+      const end = endOfNepalDay();
+      
+      const q = query(
+        collection(firestore, 'orders'), 
+        where('status', '==', 'paid'),
+        where('paidAt', '>=', start),
+        where('paidAt', '<=', end)
+      );
+      
+      getDocs(q)
+        .then((snapshot) => {
+          const orders = snapshot.docs.map(d => d.data() as Order);
+          
+          const revenue = orders.reduce((acc, curr) => acc + curr.total, 0);
+          const cash = orders.reduce((acc, curr) => curr.paymentMethod === 'cash' ? acc + curr.total : acc, 0);
+          const esewa = orders.reduce((acc, curr) => curr.paymentMethod === 'esewa' ? acc + curr.total : acc, 0);
+          
+          setStats({ revenue, orders: orders.length, cash, esewa });
 
-        // Lazy aggregation: Save today's report
-        setDocumentNonBlocking(doc(firestore, 'daily_reports', todayId), {
-          id: todayId,
-          date: todayId,
-          totalRevenue: revenue,
-          cashRevenue: cash,
-          esewaRevenue: esewa,
-          numberOfOrders: orders.length,
-          updatedAt: new Date()
-        }, { merge: true });
-
-      } catch (err) {
-        console.error("Failed to fetch admin stats:", err);
-      }
+          setDocumentNonBlocking(doc(firestore, 'daily_reports', todayId), {
+            id: todayId,
+            date: todayId,
+            totalRevenue: revenue,
+            cashRevenue: cash,
+            esewaRevenue: esewa,
+            numberOfOrders: orders.length,
+            updatedAt: new Date()
+          }, { merge: true });
+        })
+        .catch((err) => {
+          const permissionError = new FirestorePermissionError({
+            path: 'orders',
+            operation: 'list'
+          });
+          errorEmitter.emit('permission-error', permissionError);
+        });
     };
-    if (user) fetchTodayStats();
+    
+    fetchTodayStats();
   }, [firestore, user]);
 
   const toggleAdminRole = (targetUser: UserProfile, isCurrentlyAdmin: boolean) => {
@@ -269,11 +277,5 @@ export default function AdminDashboard() {
         </div>
       </main>
     </div>
-  );
-}
-
-function Activity({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
   );
 }
