@@ -13,14 +13,18 @@ service cloud.firestore {
     // User profiles
     match /users/{userId} {
       allow read: if isSignedIn();
-      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      // Owners can always create or update their own profile document
+      allow create, update: if isSignedIn() && request.auth.uid == userId;
+      // Admins have full management access over all user profiles
+      allow write: if isAdmin();
     }
 
     // Role lookups
     match /roles_admin/{userId} {
       allow read: if isSignedIn();
-      // Allow bootstrap: Anyone can promote themselves to admin for development
-      allow write: if isSignedIn() && (isAdmin() || request.auth.uid == userId);
+      // Development Bootstrap: Allow any signed-in user to manage their own admin role
+      // In production, this would typically be restricted to existing admins only.
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
     // Menu Catalog

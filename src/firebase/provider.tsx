@@ -1,6 +1,6 @@
 'use client';
 
-import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect } from 'react';
+import React, { DependencyList, createContext, useContext, ReactNode, useMemo, useState, useEffect, useRef } from 'react';
 import { FirebaseApp } from 'firebase/app';
 import { Firestore, doc, serverTimestamp } from 'firebase/firestore';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
@@ -67,6 +67,9 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
     isUserLoading: true,
     userError: null,
   });
+  
+  // Track if we've already synced the profile in this session to avoid redundant writes
+  const lastSyncedUserId = useRef<string | null>(null);
 
   // Effect to subscribe to Firebase auth state changes
   useEffect(() => {
@@ -92,8 +95,10 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
 
   // Automatically sync user profile to Firestore on successful login
   useEffect(() => {
-    if (userAuthState.user && firestore) {
+    if (userAuthState.user && firestore && lastSyncedUserId.current !== userAuthState.user.uid) {
       const { uid, email, displayName } = userAuthState.user;
+      lastSyncedUserId.current = uid;
+      
       setDocumentNonBlocking(
         doc(firestore, 'users', uid),
         {
@@ -105,6 +110,8 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
         },
         { merge: true }
       );
+    } else if (!userAuthState.user) {
+      lastSyncedUserId.current = null;
     }
   }, [userAuthState.user, firestore]);
 
