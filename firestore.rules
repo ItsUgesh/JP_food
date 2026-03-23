@@ -1,133 +1,133 @@
 rules_version = '2';
-
-/**
- * CAFE POS SYSTEM - SECURITY RULES
- * 
- * CORE PHILOSOPHY:
- * This ruleset implements a Role-Based Access Control (RBAC) model using specialized lookup 
- * collections (/roles_admin and /roles_staff) to determine user permissions. This approach 
- * ensures high performance and atomic authorization checks without needing to read a 'role' 
- * field from the user's profile document.
- * 
- * DATA STRUCTURE:
- * - /users/{userId}: User profile information.
- * - /roles_admin/{userId}: Presence indicates administrative privileges (Menu management).
- * - /roles_staff/{userId}: Presence indicates staff privileges (Order management).
- * - /menuItems/{menuItemId}: Global catalog of drinks and food.
- * - /orders/{orderId}: Transactional data with embedded order items.
- * 
- * KEY SECURITY DECISIONS:
- * 1. Admin Control: Full CRUD over the menu is strictly limited to users in the roles_admin collection.
- * 2. Staff Operations: Receptionists (Staff) are granted create/read/update access to orders to manage 
- *    the daily workflow but cannot modify the menu catalog.
- * 3. Atomic Orders: Order items are embedded directly within Order documents to ensure relational 
- *    integrity and simplify authorization—if you can access the order, you can access its items.
- * 4. Verification: All write operations require verified authentication via Firebase Auth.
- * 
- * DENORMALIZATION FOR AUTHORIZATION:
- * Relational integrity is enforced at the document level. User documents must contain an 'id' 
- * matching their document path to prevent identity spoofing during creation.
- */
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- GLOBAL HELPER FUNCTIONS ---
+    /**
+     * CORE PHILOSOPHY
+     * This ruleset implements a Role-Based Access Control (RBAC) model optimized for a Cafe POS system.
+     * It prioritizes high authorization security for administrative and staff functions while 
+     * maintaining flexibility in data schema to support rapid prototyping.
+     *
+     * DATA STRUCTURE
+     * - /users/{userId}: Private user profiles.
+     * - /roles_admin/{userId}: Lookup collection for Admin privileges.
+     * - /roles_staff/{userId}: Lookup collection for Staff privileges.
+     * - /menuItems/{menuItemId}: Publicly viewable (by staff/admin) catalog of food and drinks.
+     * - /orders/{orderId}: Transactional data managed by staff and audited by admins.
+     *
+     * KEY SECURITY DECISIONS
+     * - Authorization Independence: User roles are verified via separate lookup collections 
+     *   (/roles_admin, /roles_staff) using exists() checks. This prevents rules from breaking 
+     *   if the user's profile document is missing or improperly formatted.
+     * - Atomic Orders: Order items are embedded within the Order document to ensure 
+     *   security and relational integrity are managed in a single check.
+     * - Administrative Lockdown: Menu management is strictly reserved for users verified 
+     *   in the roles_admin collection.
+     *
+     * DENORMALIZATION FOR AUTHORIZATION
+     * - Role-based lookups are used to avoid slow queries. The existence of a document 
+     *   in a role-specific collection serves as the authoritative source of truth.
+     */
 
-    /** @description Checks if the user is authenticated. */
+    /** 
+     * GLOBAL HELPER FUNCTIONS 
+     */
+
+    // Basic authentication check
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /** @description Checks if the user has the 'admin' role via lookup collection. */
+    // Checks if the authenticated user is listed in the admin role collection
     function isAdmin() {
       return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
-    /** @description Checks if the user has the 'staff' role via lookup collection. */
+    // Checks if the authenticated user is listed in the staff role collection
     function isStaff() {
       return isSignedIn() && exists(/databases/$(database)/documents/roles_staff/$(request.auth.uid));
     }
 
-    /** @description Checks if the authenticated user's UID matches the provided userId. */
+    // Checks for direct document ownership based on the UID in the path
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // The 'isExistingOwner' function was removed because it was unused
-    // and attempted to access the global 'resource' variable directly within a function,
-    // which is not allowed. The logic for checking 'resource != null' is already
-    // handled explicitly in the relevant rules where needed.
+    // Combined ownership and existence check for updates/deletes
+    function isExistingOwner(userId) {
+      return resource != null && isOwner(userId);
+    }
 
-    // --- COLLECTION RULES ---
+    // Determines if a user has permission to manage operational data like orders
+    function canManageOperations() {
+      return isAdmin() || isStaff();
+    }
 
     /**
-     * @description Rules for user profiles. Users manage their own profiles; Admins can view all.
+     * @description Rules for the User profiles. Users can manage their own profile; Admins can view all.
      * @path /users/{userId}
-     * @allow (create) if authenticated UID matches document path.
-     * @deny (update) if attempting to change the document ID.
-     * @principle Restricts access to a user's own data tree and validates relational integrity.
+     * @allow (get) authenticated user viewing their own profile.
+     * @deny (list) an unauthenticated user or staff member attempting to browse all users.
+     * @principle Ownership for personal data; Admin role for system oversight.
      */
     match /users/{userId} {
       allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       allow create: if isOwner(userId) && request.resource.data.id == userId;
-      allow update: if isOwner(userId) && resource != null && request.resource.data.id == resource.data.id;
-      allow delete: if isOwner(userId) && resource != null;
+      allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
+      allow delete: if isExistingOwner(userId) || isAdmin();
     }
 
     /**
-     * @description Admin role lookup collection. Only Admins can manage role assignments.
+     * @description Lookup collection for Admin roles. Strictly managed by existing Admins.
      * @path /roles_admin/{userId}
-     * @allow (get) if signed in (to verify own role state).
-     * @deny (write) if user is not an Admin.
-     * @principle Role-based access control managed via lookup collections.
+     * @allow (get) a user checking their own status or an Admin verifying roles.
+     * @deny (create) any non-admin user trying to grant themselves admin rights.
+     * @principle Structural segregation of roles for atomic security checks.
      */
     match /roles_admin/{userId} {
-      allow get: if isSignedIn();
+      allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       allow create, update, delete: if isAdmin();
     }
 
     /**
-     * @description Staff role lookup collection. Only Admins can manage role assignments.
+     * @description Lookup collection for Staff roles. Managed by Admins.
      * @path /roles_staff/{userId}
-     * @allow (get) if signed in (to verify own role state).
-     * @deny (write) if user is not an Admin.
-     * @principle Role-based access control managed via lookup collections.
+     * @allow (get) a user checking their own status or an Admin auditing staff.
+     * @deny (update) a staff member trying to modify their own role.
+     * @principle Structural segregation of roles for atomic security checks.
      */
     match /roles_staff/{userId} {
-      allow get: if isSignedIn();
+      allow get: if isOwner(userId) || isAdmin();
       allow list: if isAdmin();
       allow create, update, delete: if isAdmin();
     }
 
     /**
-     * @description Menu catalog items (Drinks/Food). Admins manage; Staff view only.
+     * @description Menu management. Admins have CRUD; Staff have Read access for POS operations.
      * @path /menuItems/{menuItemId}
-     * @allow (get, list) if any authorized user (Staff/Admin) needs to see the menu.
-     * @deny (create, update, delete) if user is not an Admin.
-     * @principle Admin-only writes for shared reference data.
+     * @allow (list) a staff member loading the menu onto the POS screen.
+     * @deny (create) a staff member trying to add a new drink or change a price.
+     * @principle Role-based access control where writes are restricted to high-privilege users.
      */
     match /menuItems/{menuItemId} {
-      allow get, list: if isStaff() || isAdmin();
+      allow get, list: if canManageOperations();
       allow create: if isAdmin();
-      allow update: if isAdmin() && resource != null;
-      allow delete: if isAdmin() && resource != null;
+      allow update, delete: if isAdmin() && resource != null;
     }
 
     /**
-     * @description Customer orders and embedded order items.
+     * @description Customer Orders. Accessible by staff for processing and admins for reporting.
      * @path /orders/{orderId}
-     * @allow (create, update) if user is Staff (Reception).
-     * @allow (get, list) if user is Staff or Admin.
-     * @deny (delete) unless user is Admin.
-     * @principle Permission based on internal staff roles for business operations.
+     * @allow (create) a staff member placing a new order for a table.
+     * @deny (delete) an unauthenticated user or customer trying to remove an order.
+     * @principle Shared access for operational roles; embedding order items for atomic security.
      */
     match /orders/{orderId} {
-      allow get, list: if isStaff() || isAdmin();
-      allow create: if isStaff();
-      allow update: if isStaff() && resource != null;
+      allow get, list: if canManageOperations();
+      allow create: if canManageOperations();
+      allow update: if canManageOperations() && resource != null;
       allow delete: if isAdmin() && resource != null;
     }
   }
