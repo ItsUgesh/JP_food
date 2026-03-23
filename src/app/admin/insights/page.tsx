@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useState } from 'react';
@@ -37,11 +36,11 @@ export default function InsightsPage() {
   ] : [];
 
   const calculateKPI = () => {
-    if (!reports || reports.length < 2) return { status: 'Average', color: 'text-amber-500', icon: Activity };
+    if (!reports || reports.length < 2) return { label: 'Average', color: 'text-amber-500', icon: Activity, growth: 0 };
     
     const currentTotal = reports[0].totalRevenue;
     const previousTotal = reports[1].totalRevenue;
-    const growth = ((currentTotal - previousTotal) / previousTotal) * 100;
+    const growth = previousTotal === 0 ? 0 : ((currentTotal - previousTotal) / previousTotal) * 100;
 
     if (growth > 20) return { label: 'Excellent', color: 'text-emerald-500', icon: Zap, growth };
     if (growth > 5) return { label: 'Good', color: 'text-blue-500', icon: TrendingUp, growth };
@@ -68,7 +67,7 @@ export default function InsightsPage() {
 
         {isLoading ? (
           <div className="flex items-center justify-center py-40"><Loader2 className="h-10 w-10 animate-spin text-primary opacity-50" /></div>
-        ) : reports?.length === 0 ? (
+        ) : !reports || reports.length === 0 ? (
           <Card className="p-20 text-center border-dashed border-2">
             <Target className="h-12 w-12 mx-auto text-muted-foreground mb-4 opacity-20" />
             <p className="text-muted-foreground font-bold">Historical data is being aggregated. Check back tomorrow.</p>
