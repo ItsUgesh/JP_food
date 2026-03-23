@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,7 +10,7 @@ import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Plus, Minus, Trash2, ShoppingCart, Search, Loader2 } from 'lucide-react';
 import { MenuItem, OrderItem } from '@/types';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { collection, serverTimestamp, query, orderBy } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { addDocumentNonBlocking } from '@/firebase';
@@ -22,10 +22,12 @@ export default function POSPage() {
   const [tableNumber, setTableNumber] = useState('');
   const { toast } = useToast();
   const firestore = useFirestore();
+  const { user } = useUser();
 
   const menuQuery = useMemoFirebase(() => {
+    if (!user) return null;
     return query(collection(firestore, 'menuItems'), orderBy('name', 'asc'));
-  }, [firestore]);
+  }, [firestore, user]);
 
   const { data: menuItems, isLoading } = useCollection<MenuItem>(menuQuery);
 
@@ -88,7 +90,6 @@ export default function POSPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <Navbar />
       <main className="flex-1 container mx-auto p-4 flex flex-col md:flex-row gap-6 overflow-hidden">
-        {/* Left Side: Menu */}
         <div className="flex-1 flex flex-col gap-4 overflow-hidden">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
@@ -155,7 +156,6 @@ export default function POSPage() {
           </ScrollArea>
         </div>
 
-        {/* Right Side: Cart */}
         <div className="w-full md:w-[400px] flex flex-col gap-4">
           <Card className="flex-1 flex flex-col shadow-lg border-primary/10">
             <CardContent className="p-0 flex flex-col h-full">

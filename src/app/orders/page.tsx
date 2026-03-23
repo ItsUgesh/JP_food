@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,55 +9,46 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
-import { db } from '@/lib/firebase';
-import { collection, query, orderBy, onSnapshot, doc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import { useFirestore, useCollection, useMemoFirebase, useUser, updateDocumentNonBlocking } from '@/firebase';
+import { collection, query, orderBy, doc, serverTimestamp } from 'firebase/firestore';
 import { Order } from '@/types';
 import { format } from 'date-fns';
-import { Printer, CheckCircle2, Clock, Wallet } from 'lucide-react';
+import { Printer, CheckCircle2, Clock, Wallet, Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { Receipt } from '@/components/receipt/Receipt';
+import { cn } from '@/lib/utils';
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState<Order[]>([]);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'esewa'>('cash');
   const [orderToPrint, setOrderToPrint] = useState<Order | null>(null);
   const { toast } = useToast();
+  const firestore = useFirestore();
+  const { user } = useUser();
 
-  useEffect(() => {
-    const q = query(collection(db, 'orders'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedOrders = snapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date(),
-        paidAt: doc.data().paidAt?.toDate() || null
-      } as Order));
-      setOrders(fetchedOrders);
-    });
-    return () => unsubscribe();
-  }, []);
+  const ordersQuery = useMemoFirebase(() => {
+    if (!user) return null;
+    return query(collection(firestore, 'orders'), orderBy('createdAt', 'desc'));
+  }, [firestore, user]);
+
+  const { data: orders, isLoading } = useCollection<Order>(ordersQuery);
 
   const handleMarkAsPaid = (order: Order) => {
     setSelectedOrder(order);
     setIsPaymentDialogOpen(true);
   };
 
-  const confirmPayment = async () => {
+  const confirmPayment = () => {
     if (!selectedOrder) return;
-    try {
-      await updateDoc(doc(db, 'orders', selectedOrder.id), {
-        status: 'paid',
-        paymentMethod,
-        paidAt: serverTimestamp(),
-      });
-      setIsPaymentDialogOpen(false);
-      setSelectedOrder(null);
-      toast({ title: "Payment Recorded", description: "Order has been marked as paid." });
-    } catch (error) {
-      toast({ title: "Error", description: "Failed to update payment.", variant: "destructive" });
-    }
+    updateDocumentNonBlocking(doc(firestore, 'orders', selectedOrder.id), {
+      status: 'paid',
+      paymentMethod,
+      paidAt: serverTimestamp(),
+    });
+    setIsPaymentDialogOpen(false);
+    setSelectedOrder(null);
+    toast({ title: "Payment Recorded", description: "Order has been marked as paid." });
   };
 
   const handlePrint = (order: Order) => {
@@ -67,8 +58,8 @@ export default function OrdersPage() {
     }, 300);
   };
 
-  const pendingOrders = orders.filter(o => o.status === 'pending');
-  const paidOrders = orders.filter(o => o.status === 'paid');
+  const pendingOrders = (orders || []).filter(o => o.status === 'pending');
+  const paidOrders = (orders || []).filter(o => o.status === 'paid');
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -78,59 +69,64 @@ export default function OrdersPage() {
           <h1 className="text-3xl font-black text-primary">Orders Management</h1>
         </div>
 
-        <Tabs defaultValue="pending" className="space-y-6">
-          <TabsList className="bg-secondary/30 p-1">
-            <TabsTrigger value="pending" className="gap-2 px-6">
-              Pending
-              <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200">
-                {pendingOrders.length}
-              </Badge>
-            </TabsTrigger>
-            <TabsTrigger value="paid" className="gap-2 px-6">
-              Paid
-              <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200">
-                {paidOrders.length}
-              </Badge>
-            </TabsTrigger>
-          </TabsList>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-20">
+            <Loader2 className="h-10 w-10 animate-spin text-primary opacity-50" />
+          </div>
+        ) : (
+          <Tabs defaultValue="pending" className="space-y-6">
+            <TabsList className="bg-secondary/30 p-1">
+              <TabsTrigger value="pending" className="gap-2 px-6">
+                Pending
+                <Badge variant="outline" className="bg-amber-100 text-amber-700 border-amber-200">
+                  {pendingOrders.length}
+                </Badge>
+              </TabsTrigger>
+              <TabsTrigger value="paid" className="gap-2 px-6">
+                Paid
+                <Badge variant="outline" className="bg-green-100 text-green-700 border-green-200">
+                  {paidOrders.length}
+                </Badge>
+              </TabsTrigger>
+            </TabsList>
 
-          <TabsContent value="pending">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {pendingOrders.map(order => (
-                <OrderCard 
-                  key={order.id} 
-                  order={order} 
-                  onPay={() => handleMarkAsPaid(order)}
-                />
-              ))}
-              {pendingOrders.length === 0 && (
-                <div className="col-span-full text-center py-20 bg-secondary/10 rounded-xl border-2 border-dashed">
-                  <p className="text-muted-foreground">No pending orders found.</p>
-                </div>
-              )}
-            </div>
-          </TabsContent>
+            <TabsContent value="pending">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {pendingOrders.map(order => (
+                  <OrderCard 
+                    key={order.id} 
+                    order={order} 
+                    onPay={() => handleMarkAsPaid(order)}
+                  />
+                ))}
+                {pendingOrders.length === 0 && (
+                  <div className="col-span-full text-center py-20 bg-secondary/10 rounded-xl border-2 border-dashed">
+                    <p className="text-muted-foreground">No pending orders found.</p>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
 
-          <TabsContent value="paid">
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {paidOrders.map(order => (
-                <OrderCard 
-                  key={order.id} 
-                  order={order} 
-                  onPrint={() => handlePrint(order)}
-                />
-              ))}
-              {paidOrders.length === 0 && (
-                <div className="col-span-full text-center py-20 bg-secondary/10 rounded-xl border-2 border-dashed">
-                  <p className="text-muted-foreground">No paid orders found.</p>
-                </div>
-              )}
-            </div>
-          </TabsContent>
-        </Tabs>
+            <TabsContent value="paid">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {paidOrders.map(order => (
+                  <OrderCard 
+                    key={order.id} 
+                    order={order} 
+                    onPrint={() => handlePrint(order)}
+                  />
+                ))}
+                {paidOrders.length === 0 && (
+                  <div className="col-span-full text-center py-20 bg-secondary/10 rounded-xl border-2 border-dashed">
+                    <p className="text-muted-foreground">No paid orders found.</p>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
+        )}
       </main>
 
-      {/* Payment Dialog */}
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
@@ -175,7 +171,6 @@ export default function OrdersPage() {
         </DialogContent>
       </Dialog>
 
-      {/* Hidden printable receipt */}
       <div className="hidden">
         {orderToPrint && <Receipt order={orderToPrint} />}
       </div>
@@ -185,6 +180,7 @@ export default function OrdersPage() {
 
 function OrderCard({ order, onPay, onPrint }: { order: Order, onPay?: () => void, onPrint?: () => void }) {
   const isPaid = order.status === 'paid';
+  const orderDate = order.createdAt?.toDate ? order.createdAt.toDate() : (order.createdAt instanceof Date ? order.createdAt : new Date());
   
   return (
     <Card className="shadow-sm border-none overflow-hidden hover:shadow-md transition-shadow">
@@ -204,7 +200,7 @@ function OrderCard({ order, onPay, onPrint }: { order: Order, onPay?: () => void
         <div className="space-y-3">
           <div className="flex items-center gap-2 text-muted-foreground text-xs font-medium">
             <Clock className="h-3 w-3" />
-            {format(order.createdAt, 'hh:mm a, dd MMM')}
+            {format(orderDate, 'hh:mm a, dd MMM')}
           </div>
           
           <div className="border-y border-dashed py-3 my-2">

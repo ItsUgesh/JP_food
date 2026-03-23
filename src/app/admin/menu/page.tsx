@@ -28,7 +28,7 @@ import {
 } from '@/components/ui/select';
 import { Plus, Edit2, Trash2, Search, Loader2 } from 'lucide-react';
 import { MenuItem } from '@/types';
-import { useFirestore, useCollection, useMemoFirebase } from '@/firebase';
+import { useFirestore, useCollection, useMemoFirebase, useUser } from '@/firebase';
 import { 
   collection, 
   query, 
@@ -46,10 +46,12 @@ export default function MenuAdminPage() {
   const [formData, setFormData] = useState({ name: '', price: '', category: 'Drinks' as 'Drinks' | 'Snacks' | 'Meals' });
   const { toast } = useToast();
   const firestore = useFirestore();
+  const { user } = useUser();
 
   const menuQuery = useMemoFirebase(() => {
+    if (!user) return null;
     return query(collection(firestore, 'menuItems'), orderBy('name', 'asc'));
-  }, [firestore]);
+  }, [firestore, user]);
 
   const { data: items, isLoading } = useCollection<MenuItem>(menuQuery);
 

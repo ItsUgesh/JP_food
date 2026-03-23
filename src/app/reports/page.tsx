@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react';
 import { Navbar } from '@/components/layout/Navbar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { db } from '@/lib/firebase';
+import { Badge } from '@/components/ui/badge';
+import { useFirestore, useUser } from '@/firebase';
 import { collection, query, where, getDocs, orderBy, limit } from 'firebase/firestore';
 import { Order } from '@/types';
 import { format, startOfDay, endOfDay } from 'date-fns';
 import { TrendingUp, ShoppingBag, CheckCircle2, IndianRupee } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function ReportsPage() {
   const [stats, setStats] = useState({
@@ -15,12 +17,16 @@ export default function ReportsPage() {
     orderCount: 0,
     recentOrders: [] as Order[]
   });
+  const firestore = useFirestore();
+  const { user } = useUser();
 
   useEffect(() => {
+    if (!user) return;
+
     const fetchStats = async () => {
       const today = new Date();
       const q = query(
-        collection(db, 'orders'),
+        collection(firestore, 'orders'),
         where('status', '==', 'paid'),
         where('createdAt', '>=', startOfDay(today)),
         where('createdAt', '<=', endOfDay(today))
@@ -31,18 +37,20 @@ export default function ReportsPage() {
       
       const total = orders.reduce((acc, curr) => acc + curr.total, 0);
 
-      // Fetch recent 5 orders regardless of date
       const recentQ = query(
-        collection(db, 'orders'),
+        collection(firestore, 'orders'),
         orderBy('createdAt', 'desc'),
         limit(5)
       );
       const recentSnapshot = await getDocs(recentQ);
-      const recent = recentSnapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data(),
-        createdAt: doc.data().createdAt?.toDate() || new Date()
-      } as Order));
+      const recent = recentSnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+          id: doc.id, 
+          ...data,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : (data.createdAt instanceof Date ? data.createdAt : new Date())
+        } as Order;
+      });
 
       setStats({
         totalSales: total,
@@ -52,7 +60,7 @@ export default function ReportsPage() {
     };
 
     fetchStats();
-  }, []);
+  }, [firestore, user]);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -116,7 +124,9 @@ export default function ReportsPage() {
                       </div>
                       <div>
                         <div className="font-bold">Rs. {order.total}</div>
-                        <div className="text-xs text-muted-foreground">{format(order.createdAt, 'hh:mm a')}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {order.createdAt instanceof Date ? format(order.createdAt, 'hh:mm a') : 'Recently'}
+                        </div>
                       </div>
                     </div>
                     <Badge variant={order.status === 'paid' ? "default" : "outline"} className={cn(
