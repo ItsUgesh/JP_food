@@ -1,4 +1,3 @@
-
 "use client"
 
 import { Navbar } from '@/components/layout/Navbar';
@@ -6,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Settings, ShoppingBag, TrendingUp, Users, ShieldAlert, CheckCircle2, Loader2 } from 'lucide-react';
 import Link from 'next/link';
-import { useUser, useFirestore, useDoc, setDocumentNonBlocking } from '@/firebase';
+import { useUser, useFirestore, useDoc, setDocumentNonBlocking, useMemoFirebase } from '@/firebase';
 import { doc, serverTimestamp } from 'firebase/firestore';
 import { useToast } from '@/hooks/use-toast';
 import { useState } from 'react';
@@ -17,9 +16,13 @@ export default function AdminDashboard() {
   const { toast } = useToast();
   const [isBootstrapping, setIsBootstrapping] = useState(false);
 
-  const { data: adminRole, isLoading: isAdminLoading } = useDoc(
-    user ? doc(firestore, 'roles_admin', user.uid) : null
+  // Memoize the document reference to prevent infinite loops
+  const adminRoleRef = useMemoFirebase(() => 
+    user ? doc(firestore, 'roles_admin', user.uid) : null,
+    [firestore, user]
   );
+
+  const { data: adminRole, isLoading: isAdminLoading } = useDoc(adminRoleRef);
 
   const bootstrapAdmin = () => {
     if (!user) return;

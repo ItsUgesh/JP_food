@@ -2,7 +2,7 @@
 
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { useUser, useFirestore, useDoc } from '@/firebase';
+import { useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { doc } from 'firebase/firestore';
 
 export default function Home() {
@@ -10,15 +10,22 @@ export default function Home() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
 
-  // Check if user is admin
-  const { data: adminRole, isLoading: isAdminLoading } = useDoc(
-    user ? doc(firestore, 'roles_admin', user.uid) : null
+  // Memoize document references to prevent infinite render loops
+  const adminRoleRef = useMemoFirebase(() => 
+    user ? doc(firestore, 'roles_admin', user.uid) : null,
+    [firestore, user]
+  );
+  
+  const staffRoleRef = useMemoFirebase(() => 
+    user ? doc(firestore, 'roles_staff', user.uid) : null,
+    [firestore, user]
   );
 
+  // Check if user is admin
+  const { data: adminRole, isLoading: isAdminLoading } = useDoc(adminRoleRef);
+
   // Check if user is staff
-  const { data: staffRole, isLoading: isStaffLoading } = useDoc(
-    user ? doc(firestore, 'roles_staff', user.uid) : null
-  );
+  const { data: staffRole, isLoading: isStaffLoading } = useDoc(staffRoleRef);
 
   useEffect(() => {
     if (isUserLoading || isAdminLoading || isStaffLoading) return;

@@ -16,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
-import { useAuth, useUser, useFirestore, useDoc } from '@/firebase';
+import { useAuth, useUser, useFirestore, useDoc, useMemoFirebase } from '@/firebase';
 import { signOut } from 'firebase/auth';
 import { doc } from 'firebase/firestore';
 
@@ -28,10 +28,14 @@ export function Navbar() {
   const { user } = useUser();
   const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // Check if user is admin for conditional rendering
-  const { data: adminRole } = useDoc(
-    user ? doc(firestore, 'roles_admin', user.uid) : null
+  // Memoize document reference to prevent infinite loops in Navbar
+  const adminRoleRef = useMemoFirebase(() => 
+    user ? doc(firestore, 'roles_admin', user.uid) : null,
+    [firestore, user]
   );
+
+  // Check if user is admin for conditional rendering
+  const { data: adminRole } = useDoc(adminRoleRef);
 
   useEffect(() => {
     const isDark = document.documentElement.classList.contains('dark');
