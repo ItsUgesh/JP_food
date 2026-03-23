@@ -13,7 +13,7 @@ export interface MenuItem {
   id: string;
   name: string;
   price: number;
-  category: 'Drinks' | 'Snacks' | 'Meals';
+  category: string;
   createdAt: any;
   updatedAt?: any;
 }

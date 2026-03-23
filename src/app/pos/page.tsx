@@ -15,8 +15,6 @@ import {
   ShoppingCart, 
   Search, 
   Loader2, 
-  Save, 
-  Eraser,
   UtensilsCrossed
 } from 'lucide-react';
 import { MenuItem, OrderItem, Order } from '@/types';
@@ -44,10 +42,12 @@ export default function POSPage() {
 
   const menuQuery = useMemoFirebase(() => {
     if (!user) return null;
-    return query(collection(firestore, 'menuItems'), orderBy('name', 'asc'));
+    return query(collection(firestore, 'menu_items'), orderBy('name', 'asc'));
   }, [firestore, user]);
 
   const { data: menuItems, isLoading } = useCollection<MenuItem>(menuQuery);
+
+  const categories = ['All', ...Array.from(new Set((menuItems || []).map(i => i.category)))];
 
   const filteredItems = (menuItems || []).filter(item => {
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
@@ -122,7 +122,7 @@ export default function POSPage() {
           updatedAt: serverTimestamp()
         });
 
-        toast({ title: "Order Merged", description: `Added items to Table ${tableNumber}'s existing order.` });
+        toast({ title: "Order Merged", description: `Added items to Table ${tableNumber}.` });
       } else {
         addDocumentNonBlocking(collection(firestore, 'orders'), {
           tableNumber: tableNumber.trim(),
@@ -132,7 +132,7 @@ export default function POSPage() {
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp()
         });
-        toast({ title: "New Order", description: `Created order for Table ${tableNumber}.` });
+        toast({ title: "Order Created", description: `New order for Table ${tableNumber}.` });
       }
 
       setCart([]);
@@ -148,7 +148,6 @@ export default function POSPage() {
     <div className="min-h-screen flex flex-col bg-background">
       <Navbar />
       <main className="flex-1 container mx-auto p-4 flex flex-col lg:flex-row gap-6 overflow-hidden h-[calc(100vh-4rem)]">
-        {/* Left Side: Menu Grid */}
         <div className="flex-1 flex flex-col gap-4 overflow-hidden">
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="relative flex-1">
@@ -160,14 +159,15 @@ export default function POSPage() {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <Tabs value={activeCategory} onValueChange={setActiveCategory} className="w-full sm:w-auto">
-              <TabsList className="grid grid-cols-4 h-11">
-                <TabsTrigger value="All" className="text-xs font-bold">All</TabsTrigger>
-                <TabsTrigger value="Drinks" className="text-xs font-bold">Drinks</TabsTrigger>
-                <TabsTrigger value="Snacks" className="text-xs font-bold">Snacks</TabsTrigger>
-                <TabsTrigger value="Meals" className="text-xs font-bold">Meals</TabsTrigger>
-              </TabsList>
-            </Tabs>
+            <ScrollArea className="w-full sm:w-auto">
+              <Tabs value={activeCategory} onValueChange={setActiveCategory} className="w-full">
+                <TabsList className="h-11 flex justify-start">
+                  {categories.map(cat => (
+                    <TabsTrigger key={cat} value={cat} className="text-xs font-bold whitespace-nowrap">{cat}</TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+            </ScrollArea>
           </div>
 
           <ScrollArea className="flex-1">
@@ -188,7 +188,6 @@ export default function POSPage() {
                         src={`https://picsum.photos/seed/${item.id}/400/300`} 
                         alt={item.name}
                         className="object-cover w-full h-full group-hover:scale-105 transition-transform"
-                        data-ai-hint="food drink"
                       />
                     </div>
                     <CardContent className="p-3">
@@ -205,7 +204,6 @@ export default function POSPage() {
           </ScrollArea>
         </div>
 
-        {/* Right Side: Cart Panel */}
         <div className="w-full lg:w-[380px] flex flex-col gap-4">
           <Card className="flex-1 flex flex-col border-none shadow-lg overflow-hidden">
             <div className="p-4 border-b flex items-center justify-between bg-secondary/30">
@@ -241,29 +239,14 @@ export default function POSPage() {
                         <p className="text-[10px] text-muted-foreground">Rs. {item.price}</p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <Button 
-                          size="icon" 
-                          variant="outline" 
-                          className="h-7 w-7 rounded-full" 
-                          onClick={() => updateQty(item.id, -1)}
-                        >
+                        <Button size="icon" variant="outline" className="h-7 w-7 rounded-full" onClick={() => updateQty(item.id, -1)}>
                           <Minus className="h-3 w-3" />
                         </Button>
                         <span className="w-4 text-center text-xs font-black">{item.qty}</span>
-                        <Button 
-                          size="icon" 
-                          variant="outline" 
-                          className="h-7 w-7 rounded-full" 
-                          onClick={() => updateQty(item.id, 1)}
-                        >
+                        <Button size="icon" variant="outline" className="h-7 w-7 rounded-full" onClick={() => updateQty(item.id, 1)}>
                           <Plus className="h-3 w-3" />
                         </Button>
-                        <Button 
-                          size="icon" 
-                          variant="ghost" 
-                          className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100 transition-opacity" 
-                          onClick={() => removeFromCart(item.id)}
-                        >
+                        <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive opacity-0 group-hover:opacity-100" onClick={() => removeFromCart(item.id)}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
@@ -280,19 +263,10 @@ export default function POSPage() {
               </div>
               
               <div className="grid grid-cols-2 gap-2">
-                <Button 
-                  variant="outline" 
-                  className="h-11 font-black uppercase text-[10px] tracking-widest"
-                  onClick={() => { setCart([]); setTableNumber(''); }}
-                  disabled={isPlacing || (cart.length === 0 && !tableNumber)}
-                >
+                <Button variant="outline" className="h-11 font-black uppercase text-[10px] tracking-widest" onClick={() => { setCart([]); setTableNumber(''); }} disabled={isPlacing || cart.length === 0}>
                   Clear
                 </Button>
-                <Button 
-                  className="h-11 font-black uppercase text-[10px] tracking-widest"
-                  onClick={handleConfirmOrder}
-                  disabled={isPlacing || cart.length === 0}
-                >
+                <Button className="h-11 font-black uppercase text-[10px] tracking-widest" onClick={handleConfirmOrder} disabled={isPlacing || cart.length === 0}>
                   {isPlacing ? <Loader2 className="h-4 w-4 animate-spin" /> : "Place Order"}
                 </Button>
               </div>

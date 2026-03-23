@@ -6,7 +6,6 @@ import {
   ShoppingBag, 
   ClipboardList, 
   Settings, 
-  TrendingUp, 
   Utensils, 
   LogOut,
   Moon,
@@ -29,11 +28,7 @@ export function Navbar() {
   const { user } = useUser();
   const [isDarkMode, setIsDarkMode] = useState(false);
 
-  // Check current user's admin status
-  const adminRoleRef = useMemoFirebase(() => 
-    user ? doc(firestore, 'roles_admin', user.uid) : null,
-    [firestore, user]
-  );
+  const adminRoleRef = useMemoFirebase(() => user ? doc(firestore, 'roles_admin', user.uid) : null, [firestore, user]);
   const { data: adminRole } = useDoc(adminRoleRef);
 
   useEffect(() => {
@@ -48,24 +43,19 @@ export function Navbar() {
   };
 
   const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      router.push('/login');
-    } catch (error) {
-      console.error("Logout failed", error);
-    }
+    await signOut(auth);
+    router.push('/login');
   };
 
   const navItems = [
-    { name: 'POS', href: '/pos', icon: ShoppingBag, roles: ['staff', 'admin'] },
-    { name: 'Orders', href: '/orders', icon: ClipboardList, roles: ['staff', 'admin'] },
-    { name: 'Admin', href: '/admin', icon: LayoutDashboard, roles: ['admin'] },
-    { name: 'Menu', href: '/admin/menu', icon: Settings, roles: ['admin'] },
-    { name: 'Reports', href: '/reports', icon: TrendingUp, roles: ['admin'] },
+    { name: 'POS', href: '/pos', icon: ShoppingBag, public: true },
+    { name: 'Orders', href: '/orders', icon: ClipboardList, public: true },
+    { name: 'Admin', href: '/admin', icon: LayoutDashboard, adminOnly: true },
+    { name: 'Menu', href: '/admin/menu', icon: Settings, adminOnly: true },
   ];
 
   const filteredNavItems = navItems.filter(item => {
-    if (item.roles.includes('admin') && !adminRole) return false;
+    if (item.adminOnly && !adminRole) return false;
     return true;
   });
 
@@ -76,24 +66,15 @@ export function Navbar() {
           <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-lg">
             <Utensils className="h-6 w-6" />
           </div>
-          <span className="text-xl font-black tracking-tighter text-primary font-headline hidden sm:block">
-            JP CAFE POS
-          </span>
+          <span className="text-xl font-black tracking-tighter text-primary font-headline hidden sm:block uppercase">JP CAFE</span>
         </Link>
 
         <div className="flex items-center gap-1 sm:gap-4">
           <div className="hidden md:flex items-center gap-1">
             {filteredNavItems.map((item) => (
               <Link key={item.href} href={item.href}>
-                <Button
-                  variant="ghost"
-                  className={cn(
-                    "gap-2 font-bold transition-all px-4",
-                    pathname === item.href ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary hover:bg-secondary"
-                  )}
-                >
-                  <item.icon className="h-4 w-4" />
-                  {item.name}
+                <Button variant="ghost" className={cn("gap-2 font-bold px-4", pathname === item.href ? "bg-primary/10 text-primary" : "text-muted-foreground hover:text-primary")}>
+                  <item.icon className="h-4 w-4" /> {item.name}
                 </Button>
               </Link>
             ))}
@@ -102,40 +83,20 @@ export function Navbar() {
           <div className="h-6 w-px bg-border hidden md:block" />
 
           <div className="flex items-center gap-2">
-            {adminRole && (
-              <div className="hidden sm:flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-200">
-                <ShieldCheck className="h-3 w-3" /> Admin
-              </div>
-            )}
+            {adminRole && <div className="hidden sm:flex items-center gap-1 px-3 py-1 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-black uppercase tracking-widest border border-emerald-200"><ShieldCheck className="h-3 w-3" /> Admin</div>}
             <Button variant="ghost" size="icon" onClick={toggleDarkMode} className="rounded-full">
               {isDarkMode ? <Sun className="h-5 w-5 text-yellow-500" /> : <Moon className="h-5 w-5 text-blue-500" />}
             </Button>
-            {user && (
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="text-destructive hover:bg-destructive/10 rounded-full"
-                onClick={handleLogout}
-              >
-                <LogOut className="h-5 w-5" />
-              </Button>
-            )}
+            {user && <Button variant="ghost" size="icon" className="text-destructive hover:bg-destructive/10 rounded-full" onClick={handleLogout}><LogOut className="h-5 w-5" /></Button>}
           </div>
         </div>
       </div>
       
-      {/* Mobile Bottom Nav */}
       <div className="flex md:hidden items-center justify-around border-t py-2 bg-background/80 backdrop-blur-md">
         {filteredNavItems.map((item) => (
           <Link key={item.href} href={item.href} className="flex flex-col items-center gap-1 px-3 py-1">
-            <item.icon className={cn(
-              "h-5 w-5 transition-colors",
-              pathname === item.href ? "text-primary" : "text-muted-foreground"
-            )} />
-            <span className={cn(
-              "text-[10px] font-black uppercase tracking-widest",
-              pathname === item.href ? "text-primary" : "text-muted-foreground"
-            )}>{item.name}</span>
+            <item.icon className={cn("h-5 w-5", pathname === item.href ? "text-primary" : "text-muted-foreground")} />
+            <span className={cn("text-[10px] font-black uppercase", pathname === item.href ? "text-primary" : "text-muted-foreground")}>{item.name}</span>
           </Link>
         ))}
       </div>

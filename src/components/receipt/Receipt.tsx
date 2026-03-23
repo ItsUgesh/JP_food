@@ -9,9 +9,9 @@ export function Receipt({ order }: { order: Order }) {
   return (
     <div id="printable-receipt" className="text-black font-mono p-4 w-[80mm] mx-auto bg-white">
       <div className="text-center mb-6 space-y-1">
-        <h1 className="text-xl font-black uppercase tracking-tighter">JP Cafe & Tandoori</h1>
-        <p className="text-[10px]">Chaksibari, Thamel, Kathmandu</p>
-        <p className="text-[10px]">VAT: 601234567 | PH: +977-9800000000</p>
+        <h1 className="text-xl font-black uppercase">JP CAFE & TANDOORI</h1>
+        <p className="text-[10px]">Thamel, Kathmandu, Nepal</p>
+        <p className="text-[10px]">PH: +977-9800000000</p>
       </div>
 
       <div className="border-t border-b border-black py-2 my-2 text-[10px] space-y-1">
@@ -58,7 +58,7 @@ export function Receipt({ order }: { order: Order }) {
       </div>
 
       <div className="text-center mt-10 text-[9px] border-t border-black pt-4">
-        <p className="font-bold">THANK YOU FOR YOUR VISIT!</p>
+        <p className="font-bold uppercase tracking-widest">Thank you for visiting!</p>
         <p className="opacity-60 italic">Software by JP POS</p>
       </div>
     </div>

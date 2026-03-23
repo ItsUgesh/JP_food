@@ -1,71 +1,33 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    /** 
-     * GLOBAL HELPER FUNCTIONS 
-     */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    // Admin check: checks if UID exists in roles_admin collection
     function isAdmin() {
       return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
-    // Operational check: admins or signed-in users (staff by default)
-    function canManageOperations() {
-      return isSignedIn();
-    }
-
-    /**
-     * @description User profiles. Users manage their own; Admins see all.
-     */
     match /users/{userId} {
-      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow list: if isAdmin();
-      allow create, update: if isSignedIn() && request.auth.uid == userId;
-      allow delete: if isAdmin();
+      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
-    /**
-     * @description Admin role collection. 
-     * Allow self-creation for the very first admin (bootstrapping).
-     */
     match /roles_admin/{userId} {
-      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow list: if isAdmin();
-      allow create: if isSignedIn() && (isAdmin() || request.auth.uid == userId);
-      allow update, delete: if isAdmin();
+      allow read: if isSignedIn();
+      allow write: if isAdmin() || (isSignedIn() && !exists(/databases/$(database)/documents/roles_admin/anything));
     }
 
-    /**
-     * @description Staff role collection.
-     */
-    match /roles_staff/{userId} {
-      allow get: if isSignedIn() && (request.auth.uid == userId || isAdmin());
-      allow list: if isAdmin();
-      allow create, update, delete: if isAdmin();
+    match /menu_items/{itemId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
 
-    /**
-     * @description Menu catalog.
-     */
-    match /menuItems/{menuItemId} {
-      allow get, list: if isSignedIn();
-      allow create, update, delete: if isAdmin();
-    }
-
-    /**
-     * @description Customer Orders.
-     */
     match /orders/{orderId} {
-      allow get, list: if isSignedIn();
+      allow read: if isSignedIn();
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (
-        isAdmin() || 
-        (resource.data.status == 'pending')
+        resource.data.status == 'pending' || isAdmin()
       );
       allow delete: if isAdmin();
     }
