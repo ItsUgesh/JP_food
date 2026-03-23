@@ -10,32 +10,29 @@ export default function Home() {
   const { user, isUserLoading } = useUser();
   const firestore = useFirestore();
 
-  // Check current user's role status
+  // Check current user's role status (Admin vs Staff)
   const adminRoleRef = useMemoFirebase(() => 
     user ? doc(firestore, 'roles_admin', user.uid) : null,
     [firestore, user]
   );
-  
-  const staffRoleRef = useMemoFirebase(() => 
-    user ? doc(firestore, 'roles_staff', user.uid) : null,
-    [firestore, user]
-  );
 
   const { data: adminRole, isLoading: isAdminLoading } = useDoc(adminRoleRef);
-  const { data: staffRole, isLoading: isStaffLoading } = useDoc(staffRoleRef);
 
   useEffect(() => {
-    if (isUserLoading || isAdminLoading || isStaffLoading) return;
+    // Wait for auth and role checks to complete
+    if (isUserLoading || isAdminLoading) return;
 
     if (!user) {
+      // Not logged in
       router.push('/login');
     } else if (adminRole) {
+      // User is an Admin
       router.push('/admin');
     } else {
-      // Default to POS for staff or users without explicit roles (who might be staff by default)
+      // Default to POS for staff or users without explicit admin role
       router.push('/pos');
     }
-  }, [user, isUserLoading, adminRole, isAdminLoading, staffRole, isStaffLoading, router]);
+  }, [user, isUserLoading, adminRole, isAdminLoading, router]);
 
   return (
     <div className="h-screen w-full flex items-center justify-center bg-background">
