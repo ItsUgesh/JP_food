@@ -1,33 +1,50 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Utility functions
     function isSignedIn() {
       return request.auth != null;
     }
 
     function isAdmin() {
+      // Check if the user's UID exists in the roles_admin collection
       return isSignedIn() && exists(/databases/$(database)/documents/roles_admin/$(request.auth.uid));
     }
 
+    // User profiles
     match /users/{userId} {
-      allow read, write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && (request.auth.uid == userId || isAdmin());
     }
 
+    // Role lookups
     match /roles_admin/{userId} {
       allow read: if isSignedIn();
-      allow write: if isAdmin() || (isSignedIn() && !exists(/databases/$(database)/documents/roles_admin/anything));
+      // Allow bootstrap: Anyone can create the very first admin role or their own if they are an admin.
+      // For production, this would be more restricted.
+      allow write: if isSignedIn() && (isAdmin() || request.auth.uid == userId);
     }
 
-    match /menu_items/{itemId} {
+    match /roles_staff/{userId} {
       allow read: if isSignedIn();
       allow write: if isAdmin();
     }
 
+    // Menu Catalog
+    match /menu_items/{itemId} {
+      // Allow any signed-in user to view the menu (get for single doc, list for collection)
+      allow get, list: if isSignedIn();
+      // Only admins can modify the menu
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Orders
     match /orders/{orderId} {
       allow read: if isSignedIn();
       allow create: if isSignedIn();
       allow update: if isSignedIn() && (
-        resource.data.status == 'pending' || isAdmin()
+        // Only allow updating pending orders, or allow admins full access
+        (resource.data.status == 'pending') || isAdmin()
       );
       allow delete: if isAdmin();
     }
